@@ -1,0 +1,10 @@
+﻿{
+    "name":  "gestao-locacoes-web",
+    "version":  "1.2.3",
+    "private":  true,
+    "description":  "PWA de gestao de locacoes da Imobiliaria Rio dos Passos.",
+    "scripts":  {
+                    "start":  "python -m http.server 4173 --bind 127.0.0.1",
+                    "serve":  "python -m http.server 4173 --bind 127.0.0.1"
+                }
+}
