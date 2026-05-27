@@ -10,12 +10,12 @@
 
 (function () {
   const cfg = window.SUPABASE_CONFIG;
-  if (!cfg || !cfg.SUPABASE_URL:https://afwynugokyejfbrtyobk.supabase.co || cfg.SUPABASE_URL.includes("gestao-locacoes")) {
+  if (!cfg || !cfg.SUPABASE_URL:"https://afwynugokyejfbrtyobk.supabase.co", || cfg.SUPABASE_URL.includes("gestao-locacoes")) {
     console.warn("[Supabase] Configure supabase-config.js antes de usar.");
     return;
   }
 
-  const client = window.supabase.createClient(cfg.SUPABASE_URL:https://afwynugokyejfbrtyobk.supabase.co, cfg.SUPABASE_ANON_KEY:Imobiliaria@!);
+  const client = window.supabase.createClient(cfg.SUPABASE_URL:"https://afwynugokyejfbrtyobk.supabase.co", cfg.SUPABASE_ANON_KEY:"Imobiliaria@!",);
   const CACHE_KEY = "gestao-supabase-cache-v1";
   let saveTimer = null;
   let lastLocalUpdate = 0; // timestamp do nosso ultimo save (para ignorar eco do realtime)
