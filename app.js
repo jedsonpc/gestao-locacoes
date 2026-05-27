@@ -1,20 +1,47 @@
 const storageKey = "gestao-locacoes-v1";
 const authKey = "gestao-locacoes-auth-v1";
 const sessionKey = "gestao-locacoes-session-v1";
+const sessionUserKey = "gestao-locacoes-session-user-v1";
 const reminderSessionKey = "gestao-locacoes-contract-reminder-v1";
 const syncKey = "gestao-locacoes-sync-v1";
 const companyName = "Imobiliaria Rio dos Passos Ltda";
+const appStorage = createSafeStorage("app");
+const appSessionStorage = createSafeStorage("session");
 
 const initialState = {
   properties: [],
   clients: [],
   contracts: [],
   expenses: [],
+  payments: [],
+  auditLogs: [],
 };
 
-let state = loadState();
+let state = loadState(); // estado inicial do cache local (sincroniza com Supabase no boot)
 let syncConfig = loadSyncConfig();
 let reportMode = "analytic";
+
+const roleLabels = {
+  admin: "Administrador",
+  financeiro: "Financeiro",
+  operacional: "Operacional",
+  consulta: "Consulta",
+};
+
+const rolePermissions = {
+  admin: ["*"],
+  financeiro: ["view", "financial:write", "reports:view"],
+  operacional: ["view", "operations:write", "reports:view"],
+  consulta: ["view", "reports:view"],
+};
+
+const collectionPermissions = {
+  properties: "operations:write",
+  clients: "operations:write",
+  contracts: "operations:write",
+  expenses: "financial:write",
+  payments: "financial:write",
+};
 
 const moneyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -31,6 +58,8 @@ const viewTitles = {
   clients: "Clientes",
   contracts: "Contratos",
   expenses: "Despesas",
+  payments: "Pagamentos",
+  "financial-erp": "ERP financeiro",
   reports: "Relatorios",
   settings: "Acesso e nuvem",
 };
@@ -69,8 +98,26 @@ const chargeRules = [
   },
 ];
 
-document.addEventListener("DOMContentLoaded", () => {
-  initializeAuth();
+document.addEventListener("DOMContentLoaded", async () => {
+  // GATE: exige login Supabase. Se nao houver sessao, vai para login.html
+  if (window.SupabaseSync) {
+    const user = await window.SupabaseSync.getCurrentUser();
+    if (!user) { location.href = "login.html"; return; }
+
+    // Carrega estado remoto e sobrescreve o local
+    const remote = await window.SupabaseSync.loadRemoteState();
+    if (remote) {
+      state = { ...structuredClone(initialState), ...remote };
+    }
+
+    // Realtime: quando outro usuario salva, atualiza a tela
+    window.SupabaseSync.subscribeChanges((newData) => {
+      state = { ...structuredClone(initialState), ...newData };
+      renderAll();
+    });
+  }
+
+  await initializeAuth();
   bindNavigation();
   bindForms();
   bindUtilities();
@@ -78,8 +125,25 @@ document.addEventListener("DOMContentLoaded", () => {
   renderAll();
 });
 
+function createSafeStorage(kind) {
+  const fallback = new Map();
+  try {
+    const nativeStorage = kind === "session" ? globalThis.sessionStorage : globalThis.localStorage;
+    const testKey = `storage-test-${Date.now()}`;
+    nativeStorage.setItem(testKey, "1");
+    nativeStorage.removeItem(testKey);
+    return nativeStorage;
+  } catch {
+    return {
+      getItem: (key) => (fallback.has(key) ? fallback.get(key) : null),
+      setItem: (key, value) => fallback.set(key, String(value)),
+      removeItem: (key) => fallback.delete(key),
+    };
+  }
+}
+
 function loadState() {
-  const stored = localStorage.getItem(storageKey);
+  const stored = appStorage.getItem(storageKey);
   if (!stored) return structuredClone(initialState);
 
   try {
@@ -90,25 +154,47 @@ function loadState() {
 }
 
 function saveState() {
-  localStorage.setItem(storageKey, JSON.stringify(state));
+  // Salva no Supabase (debounce 300ms) + cache local
+  if (window.SupabaseSync) {
+    window.SupabaseSync.saveRemoteState(state);
+    return true;
+  }
+  // Fallback se Supabase nao estiver configurado
+  try {
+    appStorage.setItem(storageKey, JSON.stringify(state));
+    return true;
+  } catch (error) {
+    console.error("Falha ao salvar dados localmente:", error);
+    try {
+      alert(
+        "Nao foi possivel salvar os dados neste navegador.\n" +
+        "Causa provavel: armazenamento cheio ou navegacao privada.\n" +
+        "Detalhe tecnico: " + (error && error.message ? error.message : error)
+      );
+    } catch (_) {}
+    return false;
+  }
 }
 
 function loadSyncConfig() {
   try {
-    return JSON.parse(localStorage.getItem(syncKey)) || { endpoint: "", token: "" };
+    return JSON.parse(appStorage.getItem(syncKey)) || { endpoint: "", token: "" };
   } catch {
     return { endpoint: "", token: "" };
   }
 }
 
 function saveSyncConfig() {
-  localStorage.setItem(syncKey, JSON.stringify(syncConfig));
+  appStorage.setItem(syncKey, JSON.stringify(syncConfig));
 }
 
-function initializeAuth() {
-  saveAuthUsers(getStoredAccessUsers());
+async function initializeAuth() {
+  saveAuthUsers(await migrateAccessUsers(getStoredAccessUsers()));
 
-  document.body.classList.toggle("locked", sessionStorage.getItem(sessionKey) !== "active");
+  if (appSessionStorage.getItem(sessionKey) === "active" && !getCurrentUser()) {
+    appSessionStorage.removeItem(sessionKey);
+  }
+  document.body.classList.toggle("locked", appSessionStorage.getItem(sessionKey) !== "active");
   const syncForm = document.getElementById("sync-form");
   if (syncForm) {
     syncForm.elements.endpoint.value = syncConfig.endpoint || "";
@@ -124,7 +210,7 @@ function initializeAuth() {
 
 function getStoredAccessUsers() {
   try {
-    const stored = JSON.parse(localStorage.getItem(authKey));
+    const stored = JSON.parse(appStorage.getItem(authKey));
     if (Array.isArray(stored?.users) && stored.users.length) {
       return stored.users.map(normalizeAccessUser);
     }
@@ -138,24 +224,76 @@ function getStoredAccessUsers() {
 }
 
 function getDefaultAccessUsers() {
-  return [{ id: uid("user"), username: "admin", password: encodeCredential("admin123"), updatedAt: new Date().toISOString() }];
+  return [{ id: uid("user"), username: "admin", password: encodeCredential("admin123"), role: "admin", updatedAt: new Date().toISOString() }];
 }
 
 function normalizeAccessUser(user) {
   return {
     id: user.id || uid("user"),
     username: String(user.username || "admin").trim(),
-    password: user.password || encodeCredential("admin123"),
+    role: user.role && roleLabels[user.role] ? user.role : "admin",
+    password: user.passwordHash ? undefined : user.password || encodeCredential("admin123"),
+    passwordHash: user.passwordHash || "",
+    salt: user.salt || "",
+    hashAlgorithm: user.passwordHash ? user.hashAlgorithm || "SHA-256" : "",
     updatedAt: user.updatedAt || new Date().toISOString(),
   };
 }
 
 function saveAuthUsers(users) {
-  localStorage.setItem(authKey, JSON.stringify({ users: users.map(normalizeAccessUser) }));
+  appStorage.setItem(authKey, JSON.stringify({ users: users.map(normalizeAccessUser) }));
 }
 
 function encodeCredential(value) {
   return btoa(unescape(encodeURIComponent(String(value))));
+}
+
+async function migrateAccessUsers(users) {
+  const migrated = [];
+  for (const user of users) {
+    if (user.passwordHash && user.salt) {
+      migrated.push(normalizeAccessUser(user));
+      continue;
+    }
+    migrated.push({
+      ...normalizeAccessUser(user),
+      ...(await createPasswordHashFromLegacy(user.password || encodeCredential("admin123"))),
+      password: undefined,
+    });
+  }
+  return migrated;
+}
+
+async function createPasswordHashFromLegacy(encodedPassword) {
+  try {
+    return createPasswordHash(decodeURIComponent(escape(atob(encodedPassword))));
+  } catch {
+    return createPasswordHash("admin123");
+  }
+}
+
+async function createPasswordHash(password) {
+  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+  const salt = bytesToBase64(saltBytes);
+  const hash = await digestPassword(password, salt);
+  return { passwordHash: hash, salt, hashAlgorithm: "SHA-256" };
+}
+
+async function verifyPassword(password, user) {
+  if (user.passwordHash && user.salt) {
+    return digestPassword(password, user.salt).then((hash) => hash === user.passwordHash);
+  }
+  return encodeCredential(password) === user.password;
+}
+
+async function digestPassword(password, salt) {
+  const payload = new TextEncoder().encode(`${salt}:${password}`);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", payload);
+  return bytesToBase64(new Uint8Array(hashBuffer));
+}
+
+function bytesToBase64(bytes) {
+  return btoa(String.fromCharCode(...bytes));
 }
 
 function uid(prefix) {
@@ -166,6 +304,10 @@ function bindNavigation() {
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.addEventListener("click", () => {
       const target = button.dataset.view;
+      if (!canAccessView(target)) {
+        alert("Seu perfil nao tem permissao para acessar esta area.");
+        return;
+      }
       document.querySelectorAll(".nav-button").forEach((item) => item.classList.remove("active"));
       document.querySelectorAll(".view").forEach((item) => item.classList.remove("active"));
       button.classList.add("active");
@@ -177,14 +319,14 @@ function bindNavigation() {
 }
 
 function bindForms() {
-  document.getElementById("login-form").addEventListener("submit", (event) => {
+  document.getElementById("login-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    login(event.currentTarget);
+    await login(event.currentTarget);
   });
 
   document.getElementById("property-form").addEventListener("submit", (event) => {
     event.preventDefault();
-    upsertFromForm(event.currentTarget, "properties", "property");
+    upsertFromForm(event.currentTarget, "properties", "property", normalizeProperty);
   });
 
   document.getElementById("client-form").addEventListener("submit", (event) => {
@@ -202,16 +344,27 @@ function bindForms() {
     upsertFromForm(event.currentTarget, "expenses", "expense", normalizeExpense);
   });
 
+  const paymentForm = document.getElementById("payment-form");
+  paymentForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    updatePaymentTotal(paymentForm);
+    upsertFromForm(event.currentTarget, "payments", "payment", normalizePayment);
+  });
+  ["amount", "chargeAmount"].forEach((name) => {
+    paymentForm.elements[name].addEventListener("input", () => updatePaymentTotal(paymentForm));
+  });
+
   document.querySelectorAll("[data-reset]").forEach((button) => {
     button.addEventListener("click", () => {
       document.getElementById(button.dataset.reset).reset();
       document.getElementById(button.dataset.reset).elements.id.value = "";
+      if (button.dataset.reset === "payment-form") updatePaymentTotal(document.getElementById("payment-form"));
     });
   });
 
-  document.getElementById("access-form").addEventListener("submit", (event) => {
+  document.getElementById("access-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    updateAccess(event.currentTarget);
+    await updateAccess(event.currentTarget);
   });
 
   document.getElementById("sync-form").addEventListener("submit", (event) => {
@@ -222,6 +375,11 @@ function bindForms() {
   ["report-property", "report-client", "report-status", "report-expense-type", "report-start", "report-end", "report-min-value", "report-max-value"].forEach((id) => {
     document.getElementById(id).addEventListener("input", renderReports);
     document.getElementById(id).addEventListener("change", renderReports);
+  });
+
+  ["erp-start", "erp-end"].forEach((id) => {
+    document.getElementById(id).addEventListener("input", renderFinancialErp);
+    document.getElementById(id).addEventListener("change", renderFinancialErp);
   });
 
   document.querySelectorAll("[data-report-mode]").forEach((button) => {
@@ -241,13 +399,18 @@ function bindUtilities() {
   });
 
   document.getElementById("clear-data").addEventListener("click", () => {
+    if (!requirePermission("admin:write", "Apenas administradores podem limpar os dados.")) return;
     if (!confirm("Deseja apagar todos os dados cadastrados neste navegador?")) return;
     state = structuredClone(initialState);
+    addAuditLog("data_cleared", "system", "", null, { message: "Base local limpa pelo usuario." }, false);
     saveState();
     renderAll();
   });
 
   document.getElementById("export-csv").addEventListener("click", exportReportsCsv);
+  document.getElementById("erp-export-pdf")?.addEventListener("click", exportFinancialErpPdf);
+  document.getElementById("erp-export-excel")?.addEventListener("click", exportFinancialErpExcel);
+  document.getElementById("erp-export-csv")?.addEventListener("click", exportFinancialErpCsv);
   document.getElementById("export-excel").addEventListener("click", exportReportsExcel);
   document.getElementById("export-pdf").addEventListener("click", exportReportsPdf);
   document.getElementById("open-property-document").addEventListener("click", openPropertyDocumentFromForm);
@@ -271,32 +434,46 @@ function openPropertyDocumentFromForm() {
   }
 }
 
-function login(form) {
+async function login(form) {
   const users = getStoredAccessUsers();
   const data = Object.fromEntries(new FormData(form).entries());
-  const validAccess = users.some((user) => data.username.trim() === user.username && encodeCredential(data.password) === user.password);
+  const user = users.find((item) => data.username.trim() === item.username);
+  const validAccess = user ? await verifyPassword(data.password, user) : false;
 
   if (!validAccess) {
+    addAuditLog("login_failed", "auth", "", null, { username: data.username.trim() }, false);
     setText("login-message", "Usuario ou senha invalidos.");
     return;
   }
 
-  sessionStorage.setItem(sessionKey, "active");
+  if (!user.passwordHash || !user.salt) {
+    Object.assign(user, await createPasswordHash(data.password), { password: undefined });
+    saveAuthUsers(users);
+  }
+
+  appSessionStorage.setItem(sessionKey, "active");
+  appSessionStorage.setItem(sessionUserKey, JSON.stringify({ id: user.id, username: user.username, role: user.role || "admin" }));
   document.body.classList.remove("locked");
+  addAuditLog("login_success", "auth", user.id, null, { username: user.username, role: user.role }, false);
   form.reset();
   setText("login-message", "");
   renderAll();
 }
 
 function logout() {
-  sessionStorage.removeItem(sessionKey);
+  const user = getCurrentUser();
+  if (user) addAuditLog("logout", "auth", user.id, null, { username: user.username }, false);
+  appSessionStorage.removeItem(sessionKey);
+  appSessionStorage.removeItem(sessionUserKey);
   document.body.classList.add("locked");
 }
 
-function updateAccess(form) {
+async function updateAccess(form) {
+  if (!requirePermission("admin:write", "Apenas administradores podem gerenciar usuarios.")) return;
   const data = Object.fromEntries(new FormData(form).entries());
   const username = data.username.trim();
   const password = data.password.trim();
+  const role = data.role || "consulta";
   const users = getStoredAccessUsers();
   const existingIndex = users.findIndex((user) => user.id === data.id);
   const duplicate = users.some((user) => user.username.toLowerCase() === username.toLowerCase() && user.id !== data.id);
@@ -317,9 +494,15 @@ function updateAccess(form) {
   const user = {
     id: data.id || uid("user"),
     username,
-    password: password ? encodeCredential(password) : users[existingIndex]?.password,
+    role,
+    ...(password ? await createPasswordHash(password) : {
+      passwordHash: users[existingIndex]?.passwordHash,
+      salt: users[existingIndex]?.salt,
+      hashAlgorithm: users[existingIndex]?.hashAlgorithm || "SHA-256",
+    }),
     updatedAt: new Date().toISOString(),
   };
+  const before = existingIndex >= 0 ? users[existingIndex] : null;
 
   if (existingIndex >= 0) {
     users[existingIndex] = user;
@@ -328,6 +511,7 @@ function updateAccess(form) {
   }
 
   saveAuthUsers(users);
+  addAuditLog(existingIndex >= 0 ? "user_updated" : "user_created", "users", user.id, summarizeUser(before), summarizeUser(user), false);
   form.reset();
   form.elements.id.value = "";
   renderAccessUsers();
@@ -335,6 +519,7 @@ function updateAccess(form) {
 }
 
 function updateSyncConfig(form) {
+  if (!requirePermission("admin:write", "Apenas administradores podem alterar a sincronizacao.")) return;
   const data = Object.fromEntries(new FormData(form).entries());
   syncConfig = {
     endpoint: data.endpoint.trim(),
@@ -346,6 +531,11 @@ function updateSyncConfig(form) {
 }
 
 function upsertFromForm(form, collectionName, prefix, normalizer = (value) => value) {
+  if (!canWriteCollection(collectionName)) {
+    setText("settings-message", "Seu perfil nao permite alterar este cadastro.");
+    alert("Seu perfil nao permite alterar este cadastro.");
+    return;
+  }
   const data = Object.fromEntries(new FormData(form).entries());
   const record = normalizer({
     ...data,
@@ -354,16 +544,32 @@ function upsertFromForm(form, collectionName, prefix, normalizer = (value) => va
   });
 
   const index = state[collectionName].findIndex((item) => item.id === record.id);
+  const before = index >= 0 ? state[collectionName][index] : null;
   if (index >= 0) {
     state[collectionName][index] = record;
   } else {
     state[collectionName].push(record);
   }
 
+  addAuditLog(index >= 0 ? "record_updated" : "record_created", collectionName, record.id, before, record, isFinancialCollection(collectionName));
   saveState();
   form.reset();
   form.elements.id.value = "";
   renderAll();
+}
+
+function normalizeProperty(record) {
+  return {
+    ...record,
+    description: String(record.description || "").trim(),
+    type: String(record.type || "").trim(),
+    area: String(record.area || "").trim(),
+    location: String(record.location || "").trim(),
+    documentLink: String(record.documentLink || "").trim(),
+    investmentValue: record.investmentValue === "" || record.investmentValue == null
+      ? 0
+      : Number(record.investmentValue) || 0,
+  };
 }
 
 function normalizeContract(record) {
@@ -385,7 +591,26 @@ function normalizeExpense(record) {
   };
 }
 
+function normalizePayment(record) {
+  const amount = Number(record.amount || 0);
+  const chargeAmount = Number(record.chargeAmount || 0);
+  return {
+    ...record,
+    amount,
+    chargeAmount,
+    totalAmount: amount + chargeAmount,
+    history: String(record.history || "").trim(),
+  };
+}
+
+function updatePaymentTotal(form = document.getElementById("payment-form")) {
+  const amount = Number(form.elements.amount.value || 0);
+  const chargeAmount = Number(form.elements.chargeAmount.value || 0);
+  form.elements.totalAmount.value = (amount + chargeAmount).toFixed(2);
+}
+
 async function downloadFromCloud() {
+  if (!requirePermission("admin:write", "Apenas administradores podem baixar dados da nuvem.")) return;
   if (!ensureSyncConfigured()) return;
   setText("settings-message", "Baixando dados da nuvem...");
   try {
@@ -393,6 +618,7 @@ async function downloadFromCloud() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     state = sanitizeRemoteState(payload.state || payload);
+    addAuditLog("cloud_download", "sync", "", null, { endpoint: syncConfig.endpoint }, false);
     saveState();
     renderAll();
     setText("settings-message", "Dados baixados e aplicados com sucesso.");
@@ -402,6 +628,7 @@ async function downloadFromCloud() {
 }
 
 async function uploadToCloud() {
+  if (!requirePermission("admin:write", "Apenas administradores podem enviar dados para a nuvem.")) return;
   if (!ensureSyncConfigured()) return;
   setText("settings-message", "Enviando dados para a nuvem...");
   try {
@@ -411,6 +638,7 @@ async function uploadToCloud() {
       body: JSON.stringify({ company: companyName, updatedAt: new Date().toISOString(), state }),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    addAuditLog("cloud_upload", "sync", "", null, { endpoint: syncConfig.endpoint }, false);
     setText("settings-message", "Dados enviados para a nuvem com sucesso.");
   } catch (error) {
     setText("settings-message", `Nao foi possivel enviar: ${error.message}`);
@@ -439,6 +667,8 @@ function sanitizeRemoteState(remoteState) {
     clients: Array.isArray(remoteState.clients) ? remoteState.clients : [],
     contracts: Array.isArray(remoteState.contracts) ? remoteState.contracts.map(normalizeContract) : [],
     expenses: Array.isArray(remoteState.expenses) ? remoteState.expenses.map(normalizeExpense) : [],
+    payments: Array.isArray(remoteState.payments) ? remoteState.payments.map(normalizePayment) : [],
+    auditLogs: Array.isArray(remoteState.auditLogs) ? remoteState.auditLogs : [],
   };
 }
 
@@ -448,6 +678,69 @@ function updateSyncStatus() {
   status.textContent = syncConfig.endpoint ? "Nuvem configurada" : "Offline local";
 }
 
+function getCurrentUser() {
+  try {
+    return JSON.parse(appSessionStorage.getItem(sessionUserKey));
+  } catch {
+    return null;
+  }
+}
+
+function hasPermission(permission) {
+  const user = getCurrentUser();
+  const permissions = rolePermissions[user?.role || "consulta"] || rolePermissions.consulta;
+  return permissions.includes("*") || permissions.includes(permission);
+}
+
+function requirePermission(permission, message) {
+  if (hasPermission(permission)) return true;
+  if (message) alert(message);
+  return false;
+}
+
+function canAccessView(view) {
+  if (view === "settings") return hasPermission("admin:write");
+  return hasPermission("view");
+}
+
+function canWriteCollection(collection) {
+  return hasPermission(collectionPermissions[collection] || "admin:write");
+}
+
+function canDeleteRecords() {
+  return hasPermission("admin:write");
+}
+
+function isFinancialCollection(collection) {
+  return ["contracts", "expenses", "payments"].includes(collection);
+}
+
+function applyPermissionUi() {
+  const user = getCurrentUser();
+  const badge = document.getElementById("current-user-badge");
+  if (badge) badge.textContent = user ? `${user.username} - ${roleLabels[user.role] || user.role}` : "Sessao bloqueada";
+
+  document.querySelectorAll("[data-view='settings']").forEach((item) => {
+    item.hidden = !hasPermission("admin:write");
+  });
+  document.getElementById("clear-data")?.toggleAttribute("hidden", !hasPermission("admin:write"));
+
+  setFormWriteState("property-form", canWriteCollection("properties"));
+  setFormWriteState("client-form", canWriteCollection("clients"));
+  setFormWriteState("contract-form", canWriteCollection("contracts"));
+  setFormWriteState("expense-form", canWriteCollection("expenses"));
+  setFormWriteState("payment-form", canWriteCollection("payments"));
+}
+
+function setFormWriteState(formId, enabled) {
+  const form = document.getElementById(formId);
+  if (!form) return;
+  [...form.elements].forEach((element) => {
+    if (element.type === "hidden") return;
+    element.disabled = !enabled;
+  });
+}
+
 function renderAll() {
   populateSelects();
   renderDashboard();
@@ -455,17 +748,21 @@ function renderAll() {
   renderClients();
   renderContracts();
   renderExpenses();
+  renderPayments();
+  renderFinancialErp();
   renderReports();
   renderAccessUsers();
+  renderAuditLogs();
+  applyPermissionUi();
   scheduleContractExpirationReminder();
 }
 
 function scheduleContractExpirationReminder() {
   if (document.body.classList.contains("locked")) return;
-  if (sessionStorage.getItem(reminderSessionKey) === "shown") return;
+  if (appSessionStorage.getItem(reminderSessionKey) === "shown") return;
   const expiringContracts = getExpiringContracts(30);
   if (!expiringContracts.length) return;
-  sessionStorage.setItem(reminderSessionKey, "shown");
+  appSessionStorage.setItem(reminderSessionKey, "shown");
   setTimeout(() => showContractExpirationReminder(expiringContracts), 250);
 }
 
@@ -495,6 +792,7 @@ function showContractExpirationReminder(expiringContracts) {
 function populateSelects() {
   populateSelect(document.querySelector("#contract-form [name='propertyId']"), state.properties, "Selecione o imovel", "description");
   populateSelect(document.querySelector("#expense-form [name='propertyId']"), state.properties, "Selecione o imovel", "description");
+  populateSelect(document.querySelector("#payment-form [name='propertyId']"), state.properties, "Selecione o imovel", "description");
   populateSelect(document.querySelector("#contract-form [name='clientId']"), state.clients, "Selecione o cliente", "name");
   populateSelect(document.getElementById("report-property"), state.properties, "Todos os imoveis", "description", true);
   populateSelect(document.getElementById("report-client"), state.clients, "Todos os clientes", "name", true);
@@ -514,10 +812,11 @@ function renderDashboard() {
   const activeContracts = state.contracts.filter((contract) => getContractStatus(contract).key !== "expired");
   const monthlyRevenue = activeContracts.reduce((sum, contract) => sum + contract.monthlyValue, 0);
   const expensesTotal = state.expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const receivedRevenue = state.payments.reduce((sum, payment) => sum + Number(payment.totalAmount || 0), 0);
 
   setText("metric-properties", state.properties.length);
   setText("metric-active-contracts", activeContracts.length);
-  setText("metric-revenue", formatMoney(monthlyRevenue));
+  setText("metric-revenue", formatMoney(receivedRevenue || monthlyRevenue));
   setText("metric-expenses", formatMoney(expensesTotal));
 
   const upcoming = getExpiringContracts(90);
@@ -562,23 +861,13 @@ function getPropertyFinancials(property) {
   const currentMonthEnd = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 0);
   const yearStart = new Date(referenceDate.getFullYear(), 0, 1);
   const area = parseAreaValue(property.area);
-  const propertyContracts = state.contracts.filter((contract) => contract.propertyId === property.id);
-
-  const revenue = propertyContracts.reduce(
-    (totals, contract) => {
-      const monthlyValue = Number(contract.monthlyValue || 0);
-      totals.current += contractOverlapsPeriod(contract, currentMonthStart, currentMonthEnd) ? monthlyValue : 0;
-      totals.annual += monthlyValue * countContractMonthsInPeriod(contract, yearStart, referenceDate);
-      totals.accumulated += monthlyValue * countContractMonthsInPeriod(contract, parseDate(contract.startDate), referenceDate);
-      return totals;
-    },
-    createPeriodTotals(),
-  );
+  const propertyPayments = state.payments.filter((payment) => payment.propertyId === property.id);
+  const revenue = getPaymentPeriodTotals(propertyPayments, currentMonthStart, currentMonthEnd, yearStart, referenceDate);
 
   const propertyExpenses = state.expenses.filter((expense) => expense.propertyId === property.id);
   const expenses = {
     current: sumExpensesInPeriod(propertyExpenses, currentMonthStart, currentMonthEnd),
-    annual: sumExpensesInPeriod(propertyExpenses, yearStart, today),
+    annual: sumExpensesInPeriod(propertyExpenses, yearStart, referenceDate),
     accumulated: propertyExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0),
   };
   const net = subtractPeriodTotals(revenue, expenses);
@@ -590,9 +879,18 @@ function getPropertyFinancials(property) {
 function getFinancialReferenceDate() {
   const dates = [
     ...state.expenses.map((expense) => parseDate(expense.expenseDate)),
+    ...state.payments.map((payment) => parseDate(payment.paymentDate)),
     ...state.contracts.flatMap((contract) => [contract.updatedAt ? new Date(contract.updatedAt) : null, parseDate(contract.startDate)]),
   ].filter(Boolean);
   return dates.length ? new Date(Math.max(...dates.map((date) => date.getTime()))) : new Date();
+}
+
+function getPaymentPeriodTotals(payments, currentMonthStart, currentMonthEnd, yearStart, referenceDate) {
+  return {
+    current: sumPaymentsInPeriod(payments, currentMonthStart, currentMonthEnd),
+    annual: sumPaymentsInPeriod(payments, yearStart, referenceDate),
+    accumulated: payments.reduce((sum, payment) => sum + Number(payment.totalAmount || 0), 0),
+  };
 }
 
 function getFinancialPeriodLabels() {
@@ -658,6 +956,12 @@ function sumExpensesInPeriod(expenses, startDate, endDate) {
     .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
 }
 
+function sumPaymentsInPeriod(payments, startDate, endDate) {
+  return payments
+    .filter((payment) => isDateInPeriod(parseDate(payment.paymentDate), startDate, endDate))
+    .reduce((sum, payment) => sum + Number(payment.totalAmount || 0), 0);
+}
+
 function countContractMonthsInPeriod(contract, periodStart, periodEnd) {
   const contractStart = parseDate(contract.startDate);
   const contractEnd = parseDate(contract.endDate);
@@ -721,6 +1025,7 @@ function renderProperties() {
       <td>${escapeHtml(property.type)}</td>
       <td>${escapeHtml(property.area)}</td>
       <td>${escapeHtml(property.location)}</td>
+      <td>${property.investmentValue ? formatMoney(property.investmentValue) : "-"}</td>
       <td>${renderDocumentLink(property.documentLink)}</td>
       <td>${actions("properties", property.id, "property-form")}</td>
     `,
@@ -799,6 +1104,250 @@ function renderExpenses() {
   );
 }
 
+function renderPayments() {
+  renderTable(
+    "payments-body",
+    state.payments,
+    (payment) => `
+      <td>${escapeHtml(findProperty(payment.propertyId)?.description || "-")}</td>
+      <td>${formatDate(payment.paymentDate)}</td>
+      <td>${formatMoney(payment.amount)}</td>
+      <td>${formatMoney(payment.chargeAmount)}</td>
+      <td>${formatMoney(payment.totalAmount)}</td>
+      <td>${escapeHtml(payment.history || "-")}</td>
+      <td>${actions("payments", payment.id, "payment-form")}</td>
+    `,
+  );
+}
+
+function renderFinancialErp() {
+  const period = getErpPeriod();
+  const receivables = buildAutomaticReceivables(period);
+  const payments = state.payments.filter((payment) => isDateInPeriod(parseDate(payment.paymentDate), period.startDate, period.endDate));
+  const expenses = state.expenses.filter((expense) => isDateInPeriod(parseDate(expense.expenseDate), period.startDate, period.endDate));
+  const receivedRevenue = payments.reduce((sum, payment) => sum + Number(payment.totalAmount || 0), 0);
+  const expectedRevenue = receivables.reduce((sum, item) => sum + item.expected, 0);
+  const expensesTotal = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const overdueTotal = receivables.filter((item) => item.statusKey === "overdue").reduce((sum, item) => sum + item.balance, 0);
+  const operatingResult = receivedRevenue - expensesTotal;
+  const operatingMargin = receivedRevenue ? (operatingResult / receivedRevenue) * 100 : 0;
+  const totalInvestment = state.properties.reduce((sum, property) => sum + Number(property.investmentValue || 0), 0);
+  const annualizedRoi = totalInvestment ? (operatingResult / totalInvestment) * (12 / period.months.length) * 100 : 0;
+
+  setText("erp-expected-revenue", formatMoney(expectedRevenue));
+  setText("erp-received-revenue", formatMoney(receivedRevenue));
+  setText("erp-overdue-total", formatMoney(overdueTotal));
+  setText("erp-cash-balance", formatMoney(operatingResult));
+  setText("erp-operating-margin", `${formatNumber(operatingMargin)}%`);
+  setText("erp-roi", `${formatNumber(annualizedRoi)}%`);
+  setText("erp-expenses-total", formatMoney(expensesTotal));
+  setText("erp-operating-result", formatMoney(operatingResult));
+  setText("erp-dre-period", `${formatMonth(period.startDate)} a ${formatMonth(period.endDate)}`);
+
+  renderDreList(receivedRevenue, expensesTotal, overdueTotal, expectedRevenue);
+  renderErpReceivables(receivables);
+  renderErpCashflow(period, payments, expenses);
+  renderErpExpenseCategories(expenses);
+  renderErpPropertyProfitability(period, payments, expenses);
+}
+
+function getErpPeriod() {
+  const startInput = document.getElementById("erp-start");
+  const endInput = document.getElementById("erp-end");
+  const reference = getFinancialReferenceDate();
+  const defaultStart = `${reference.getFullYear()}-01`;
+  const defaultEnd = toMonthValue(reference);
+
+  if (!startInput.value) startInput.value = defaultStart;
+  if (!endInput.value) endInput.value = defaultEnd;
+  if (startInput.value > endInput.value) endInput.value = startInput.value;
+
+  const startDate = parseMonthValue(startInput.value);
+  const endMonth = parseMonthValue(endInput.value);
+  const endDate = new Date(endMonth.getFullYear(), endMonth.getMonth() + 1, 0);
+  return { startDate, endDate, months: listMonths(startDate, endDate) };
+}
+
+function buildAutomaticReceivables(period) {
+  const receivables = [];
+  const activeContracts = state.contracts.filter((contract) => contractOverlapsPeriod(contract, period.startDate, period.endDate));
+
+  activeContracts.forEach((contract) => {
+    const contractStart = parseDate(contract.startDate);
+    const contractEnd = parseDate(contract.endDate);
+    const dueDay = contractStart?.getDate() || 10;
+    period.months.forEach((monthDate) => {
+      const monthStart = firstDayOfMonth(monthDate);
+      const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+      if (!contractStart || !contractEnd || contractStart > monthEnd || contractEnd < monthStart) return;
+
+      const dueDate = new Date(monthDate.getFullYear(), monthDate.getMonth(), Math.min(dueDay, monthEnd.getDate()));
+      receivables.push({
+        contract,
+        property: findProperty(contract.propertyId),
+        client: findClient(contract.clientId),
+        dueDate,
+        month: toMonthValue(monthDate),
+        expected: Number(contract.monthlyValue || 0),
+        received: 0,
+      });
+    });
+  });
+
+  const paymentsByPropertyMonth = state.payments.reduce((groups, payment) => {
+    const paymentDate = parseDate(payment.paymentDate);
+    if (!paymentDate || !isDateInPeriod(paymentDate, period.startDate, period.endDate)) return groups;
+    const key = `${payment.propertyId}:${toMonthValue(paymentDate)}`;
+    groups[key] = (groups[key] || 0) + Number(payment.totalAmount || 0);
+    return groups;
+  }, {});
+
+  receivables
+    .sort((a, b) => a.dueDate - b.dueDate)
+    .forEach((item) => {
+      const key = `${item.contract.propertyId}:${item.month}`;
+      const available = paymentsByPropertyMonth[key] || 0;
+      item.received = Math.min(item.expected, available);
+      paymentsByPropertyMonth[key] = Math.max(available - item.received, 0);
+      item.balance = Math.max(item.expected - item.received, 0);
+      item.statusKey = getReceivableStatus(item);
+      item.status = getReceivableStatusLabel(item.statusKey);
+    });
+
+  return receivables;
+}
+
+function getReceivableStatus(item) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (item.balance <= 0) return "paid";
+  if (item.received > 0) return "partial";
+  if (item.dueDate < today) return "overdue";
+  return "open";
+}
+
+function getReceivableStatusLabel(status) {
+  return {
+    paid: "Recebido",
+    partial: "Parcial",
+    overdue: "Vencido",
+    open: "Em aberto",
+  }[status];
+}
+
+function renderDreList(revenue, expenses, overdue, expectedRevenue) {
+  const rows = [
+    ["Receita operacional recebida", revenue],
+    ["(-) Despesas operacionais", -expenses],
+    ["Resultado operacional", revenue - expenses],
+    ["Contas a receber previstas", expectedRevenue],
+    ["Inadimplencia vencida", -overdue],
+  ];
+  document.getElementById("erp-dre-list").innerHTML = rows
+    .map(([label, value]) => `
+      <div class="dre-row ${value < 0 ? "negative" : ""}">
+        <span>${escapeHtml(label)}</span>
+        <strong>${formatMoney(value)}</strong>
+      </div>
+    `)
+    .join("");
+}
+
+function renderErpReceivables(receivables) {
+  renderTable(
+    "erp-receivables-body",
+    receivables,
+    (item) => `
+      <td>${formatDate(toDateInputValue(item.dueDate))}</td>
+      <td>${escapeHtml(item.property?.description || "-")}</td>
+      <td>${escapeHtml(item.client?.name || "-")}</td>
+      <td>${formatMoney(item.expected)}</td>
+      <td>${formatMoney(item.received)}</td>
+      <td>${formatMoney(item.balance)}</td>
+      <td><span class="status ${item.statusKey}">${item.status}</span></td>
+    `,
+  );
+}
+
+function renderErpCashflow(period, payments, expenses) {
+  const rows = period.months.map((monthDate) => {
+    const month = toMonthValue(monthDate);
+    const inflow = payments
+      .filter((payment) => toMonthValue(parseDate(payment.paymentDate)) === month)
+      .reduce((sum, payment) => sum + Number(payment.totalAmount || 0), 0);
+    const outflow = expenses
+      .filter((expense) => toMonthValue(parseDate(expense.expenseDate)) === month)
+      .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+    return { monthDate, inflow, outflow, balance: inflow - outflow };
+  });
+
+  renderTable(
+    "erp-cashflow-body",
+    rows,
+    (row) => `
+      <td>${formatMonth(row.monthDate)}</td>
+      <td>${formatMoney(row.inflow)}</td>
+      <td>${formatMoney(row.outflow)}</td>
+      <td><strong class="${row.balance < 0 ? "negative-text" : "positive-text"}">${formatMoney(row.balance)}</strong></td>
+    `,
+  );
+}
+
+function renderErpExpenseCategories(expenses) {
+  const total = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const rows = Object.entries(
+    expenses.reduce((groups, expense) => {
+      const category = expense.expenseType || "Outros";
+      groups[category] = (groups[category] || 0) + Number(expense.amount || 0);
+      return groups;
+    }, {}),
+  )
+    .map(([category, amount]) => ({ category, amount, share: total ? (amount / total) * 100 : 0 }))
+    .sort((a, b) => b.amount - a.amount);
+
+  renderTable(
+    "erp-expense-category-body",
+    rows,
+    (row) => `
+      <td>${escapeHtml(row.category)}</td>
+      <td>${formatMoney(row.amount)}</td>
+      <td>${formatNumber(row.share)}%</td>
+    `,
+  );
+}
+
+function renderErpPropertyProfitability(period, payments, expenses) {
+  const rows = state.properties
+    .map((property) => {
+      const revenue = payments
+        .filter((payment) => payment.propertyId === property.id)
+        .reduce((sum, payment) => sum + Number(payment.totalAmount || 0), 0);
+      const expenseTotal = expenses
+        .filter((expense) => expense.propertyId === property.id)
+        .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+      const result = revenue - expenseTotal;
+      const margin = revenue ? (result / revenue) * 100 : 0;
+      const investment = Number(property.investmentValue || 0);
+      const roi = investment ? (result / investment) * (12 / period.months.length) * 100 : 0;
+      return { property, revenue, expenses: expenseTotal, result, margin, roi };
+    })
+    .filter((row) => row.revenue || row.expenses || Number(row.property.investmentValue || 0))
+    .sort((a, b) => b.result - a.result);
+
+  renderTable(
+    "erp-property-profitability-body",
+    rows,
+    (row) => `
+      <td>${escapeHtml(row.property.description)}</td>
+      <td>${formatMoney(row.revenue)}</td>
+      <td>${formatMoney(row.expenses)}</td>
+      <td><strong class="${row.result < 0 ? "negative-text" : "positive-text"}">${formatMoney(row.result)}</strong></td>
+      <td>${formatNumber(row.margin)}%</td>
+      <td>${row.roi ? `${formatNumber(row.roi)}%` : "-"}</td>
+    `,
+  );
+}
+
 function renderAccessUsers() {
   const body = document.getElementById("access-users-body");
   if (!body) return;
@@ -807,6 +1356,8 @@ function renderAccessUsers() {
     getStoredAccessUsers(),
     (user) => `
       <td>${escapeHtml(user.username)}</td>
+      <td>${escapeHtml(roleLabels[user.role] || user.role)}</td>
+      <td>${user.passwordHash ? "Hash SHA-256 + salt" : "Legado pendente"}</td>
       <td>${formatDateTime(user.updatedAt)}</td>
       <td>
         <div class="actions-cell">
@@ -818,12 +1369,38 @@ function renderAccessUsers() {
   );
 }
 
+function renderAuditLogs() {
+  const body = document.getElementById("audit-log-body");
+  if (!body) return;
+  const rows = [...(state.auditLogs || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 120);
+  renderTable(
+    "audit-log-body",
+    rows,
+    (log) => `
+      <td>${formatDateTime(log.createdAt)}</td>
+      <td>${escapeHtml(log.userName || "Sistema")}</td>
+      <td>${escapeHtml(log.action)}</td>
+      <td>${escapeHtml(log.collection)}</td>
+      <td>${escapeHtml(getAuditType(log))}</td>
+      <td>${escapeHtml(log.summary)}</td>
+    `,
+  );
+}
+
+function getAuditType(log) {
+  if (log.collection === "auth" || log.collection === "users") return "Seguranca";
+  if (log.financial) return "Financeiro";
+  if (log.collection === "sync" || log.collection === "system") return "Sistema";
+  return "Operacional";
+}
+
 function renderReports() {
   updateReportModeVisibility();
   const propertyId = document.getElementById("report-property").value;
   const clientId = document.getElementById("report-client").value;
   const status = document.getElementById("report-status").value;
   const filters = getReportFilters();
+  const payments = getFilteredPayments(filters, propertyId, clientId, status);
 
   const rows = state.contracts
     .filter((contract) => propertyId === "all" || contract.propertyId === propertyId)
@@ -832,8 +1409,9 @@ function renderReports() {
     .filter((contract) => contractMatchesReportFilters(contract, filters))
     .map(toReportRow);
 
-  renderReportMetrics(rows);
-  renderPropertyReports(rows, filters);
+  renderReportMetrics(rows, payments);
+  renderRevenueReport(payments);
+  renderPropertyReports(rows, filters, payments);
   renderExpenseTypeReport(rows, filters);
   renderChargesReport(propertyId, clientId, status, filters);
   renderSummaryReport(rows, filters);
@@ -877,13 +1455,14 @@ function contractMatchesReportFilters(contract, filters) {
   return startsBeforeEnd && endsAfterStart && aboveMin && belowMax;
 }
 
-function renderReportMetrics(rows) {
-  const revenue = rows.reduce((sum, row) => sum + row.monthlyValue, 0);
+function renderReportMetrics(rows, payments = getFilteredPayments()) {
+  const revenue = payments.reduce((sum, payment) => sum + Number(payment.totalAmount || 0), 0);
+  const chargesReceived = payments.reduce((sum, payment) => sum + Number(payment.chargeAmount || 0), 0);
   const ownerExpenses = rows.reduce((sum, row) => sum + row.ownerExpenses, 0);
-  const tenantCharges = getFilteredChargeRows().filter((row) => row.responsible === "cliente" && rows.some((reportRow) => reportRow.contractId === row.contractId)).length;
-  const averageTicket = rows.length ? revenue / rows.length : 0;
-  const propertyTotals = rows.reduce((totals, row) => {
-    totals[row.property] = (totals[row.property] || 0) + row.monthlyValue;
+  const averageTicket = payments.length ? revenue / payments.length : 0;
+  const propertyTotals = payments.reduce((totals, payment) => {
+    const property = findProperty(payment.propertyId)?.description || "-";
+    totals[property] = (totals[property] || 0) + Number(payment.totalAmount || 0);
     return totals;
   }, {});
   const topProperty = Object.entries(propertyTotals).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
@@ -892,7 +1471,7 @@ function renderReportMetrics(rows) {
   setText("report-revenue", formatMoney(revenue));
   setText("report-owner-expenses", formatMoney(ownerExpenses));
   setText("report-net-revenue", formatMoney(revenue - ownerExpenses));
-  setText("report-tenant-charges", tenantCharges);
+  setText("report-tenant-charges", formatMoney(chargesReceived));
   setText("report-contract-count", rows.length);
   setText("report-average-ticket", formatMoney(averageTicket));
   setText("report-top-property", topProperty);
@@ -915,11 +1494,12 @@ function renderSummaryReport(reportRows, filters = getReportFilters()) {
     "summary-report-body",
     [
       { indicator: "Carteira filtrada", result: `${summary.contractCount} contrato(s)`, note: `${summary.activeContracts} ativo(s), ${summary.endingContracts} a vencer e ${summary.expiredContracts} encerrado(s).` },
-      { indicator: "Receita bruta mensal", result: formatMoney(summary.revenue), note: `Ticket medio de ${formatMoney(summary.averageTicket)} por contrato filtrado.` },
+      { indicator: "Receita recebida", result: formatMoney(summary.revenue), note: `Ticket medio de ${formatMoney(summary.averageTicket)} por pagamento lancado.` },
+      { indicator: "Encargos recebidos", result: formatMoney(summary.chargesReceived), note: `${summary.paymentCount} pagamento(s) lancado(s) no recorte atual.` },
       { indicator: "Despesas apropriadas", result: formatMoney(summary.expenses), note: `${summary.expenseCount} lancamento(s) de despesa no recorte atual.` },
       { indicator: "Resultado liquido", result: formatMoney(summary.netResult), note: `Margem gerencial de ${formatNumber(summary.netMargin)}% sobre a receita filtrada.` },
       { indicator: "Maior receita", result: summary.topProperty, note: summary.topProperty === "-" ? "Sem imovel com receita no filtro." : "Imovel com maior participacao na receita bruta." },
-      { indicator: "Encargos do cliente", result: `${summary.tenantCharges} encargo(s)`, note: "Quantidade de impostos e taxas sob responsabilidade do cliente." },
+      { indicator: "Encargos do cliente", result: `${summary.tenantCharges} encargo(s)`, note: "Quantidade de impostos e taxas sob responsabilidade do cliente nos contratos filtrados." },
     ],
     (row) => `
       <td>${escapeHtml(row.indicator)}</td>
@@ -934,6 +1514,7 @@ function renderSummaryReport(reportRows, filters = getReportFilters()) {
     (row) => `
       <td>${escapeHtml(row.property)}</td>
       <td>${formatMoney(row.revenue)}</td>
+      <td>${formatMoney(row.chargesReceived)}</td>
       <td>${formatMoney(row.expenses)}</td>
       <td>${formatMoney(row.netResult)}</td>
       <td>${formatNumber(row.participation)}%</td>
@@ -942,27 +1523,36 @@ function renderSummaryReport(reportRows, filters = getReportFilters()) {
 }
 
 function getSummaryReportData(reportRows, filters = getReportFilters()) {
-  const revenue = reportRows.reduce((sum, row) => sum + row.monthlyValue, 0);
+  const propertyId = document.getElementById("report-property")?.value || "all";
+  const clientId = document.getElementById("report-client")?.value || "all";
+  const status = document.getElementById("report-status")?.value || "all";
+  const payments = getFilteredPayments(filters, propertyId, clientId, status);
+  const revenue = payments.reduce((sum, payment) => sum + Number(payment.totalAmount || 0), 0);
+  const chargesReceived = payments.reduce((sum, payment) => sum + Number(payment.chargeAmount || 0), 0);
   const clientIds = new Set(reportRows.map((row) => row.clientId));
   const reportPropertyIds = new Set(reportRows.map((row) => row.propertyId));
-  const expenses = getFilteredExpenses(filters).filter((expense) => reportPropertyIds.size ? reportPropertyIds.has(expense.propertyId) : true);
-  const propertyIds = new Set([...reportPropertyIds, ...expenses.map((expense) => expense.propertyId)]);
+  const paymentPropertyIds = new Set(payments.map((payment) => payment.propertyId));
+  const expenses = getFilteredExpenses(filters).filter((expense) => reportPropertyIds.size || paymentPropertyIds.size ? reportPropertyIds.has(expense.propertyId) || paymentPropertyIds.has(expense.propertyId) : true);
+  const propertyIds = new Set([...reportPropertyIds, ...paymentPropertyIds, ...expenses.map((expense) => expense.propertyId)]);
   const expensesTotal = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   const activeContracts = reportRows.filter((row) => row.statusKey === "active").length;
   const endingContracts = reportRows.filter((row) => row.statusKey === "ending").length;
   const expiredContracts = reportRows.filter((row) => row.statusKey === "expired").length;
   const tenantCharges = getFilteredChargeRows().filter((row) => row.responsible === "cliente" && reportRows.some((reportRow) => reportRow.contractId === row.contractId)).length;
-  const averageTicket = reportRows.length ? revenue / reportRows.length : 0;
+  const averageTicket = payments.length ? revenue / payments.length : 0;
   const netResult = revenue - expensesTotal;
   const netMargin = revenue ? (netResult / revenue) * 100 : 0;
   const propertyRows = [...propertyIds]
     .map((propertyId) => {
       const property = findProperty(propertyId);
-      const propertyRevenue = reportRows.filter((row) => row.propertyId === propertyId).reduce((sum, row) => sum + row.monthlyValue, 0);
+      const propertyPayments = payments.filter((payment) => payment.propertyId === propertyId);
+      const propertyRevenue = propertyPayments.reduce((sum, payment) => sum + Number(payment.totalAmount || 0), 0);
+      const propertyCharges = propertyPayments.reduce((sum, payment) => sum + Number(payment.chargeAmount || 0), 0);
       const propertyExpenses = expenses.filter((expense) => expense.propertyId === propertyId).reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
       return {
         property: property?.description || "-",
         revenue: propertyRevenue,
+        chargesReceived: propertyCharges,
         expenses: propertyExpenses,
         netResult: propertyRevenue - propertyExpenses,
         participation: revenue ? (propertyRevenue / revenue) * 100 : 0,
@@ -972,6 +1562,8 @@ function getSummaryReportData(reportRows, filters = getReportFilters()) {
 
   return {
     revenue,
+    chargesReceived,
+    paymentCount: payments.length,
     expenses: expensesTotal,
     expenseCount: expenses.length,
     netResult,
@@ -996,11 +1588,33 @@ function getSummaryPeriodLabel(filters = getReportFilters()) {
   return "Todos os periodos";
 }
 
-function renderPropertyReports(reportRows, filters = getReportFilters()) {
+function renderRevenueReport(payments = getFilteredPayments()) {
+  const rows = payments
+    .map((payment) => ({
+      ...payment,
+      property: findProperty(payment.propertyId)?.description || "-",
+    }))
+    .sort((a, b) => String(b.paymentDate).localeCompare(String(a.paymentDate)));
+
+  renderTable(
+    "revenue-report-body",
+    rows,
+    (row) => `
+      <td>${escapeHtml(row.property)}</td>
+      <td>${formatDate(row.paymentDate)}</td>
+      <td>${formatMoney(row.amount)}</td>
+      <td>${formatMoney(row.chargeAmount)}</td>
+      <td>${formatMoney(row.totalAmount)}</td>
+      <td>${escapeHtml(row.history || "-")}</td>
+    `,
+  );
+}
+
+function renderPropertyReports(reportRows, filters = getReportFilters(), payments = getFilteredPayments(filters)) {
   const rows = state.properties
     .map((property) => {
       const propertyContracts = reportRows.filter((row) => row.propertyId === property.id);
-      const revenue = propertyContracts.reduce((sum, row) => sum + row.monthlyValue, 0);
+      const revenue = payments.filter((payment) => payment.propertyId === property.id).reduce((sum, payment) => sum + Number(payment.totalAmount || 0), 0);
       const enteredExpenses = getEnteredExpenses(property.id, filters);
       const ownerCharges = propertyContracts.reduce((sum, row) => sum + row.ownerChargeCount, 0);
       const ownerExpenses = enteredExpenses;
@@ -1112,6 +1726,49 @@ function renderChargeSummary(contract) {
     .join("");
 }
 
+function addAuditLog(action, collection, recordId, before, after, financial = false) {
+  const user = getCurrentUser();
+  const beforeSummary = summarizeRecord(before);
+  const afterSummary = summarizeRecord(after);
+  const summary = beforeSummary && afterSummary
+    ? `${beforeSummary} -> ${afterSummary}`
+    : afterSummary || beforeSummary || "-";
+  state.auditLogs = [
+    ...(state.auditLogs || []),
+    {
+      id: uid("audit"),
+      createdAt: new Date().toISOString(),
+      userId: user?.id || "system",
+      userName: user?.username || "Sistema",
+      userRole: user?.role || "system",
+      action,
+      collection,
+      recordId,
+      financial,
+      summary,
+    },
+  ].slice(-500);
+  saveState();
+}
+
+function summarizeRecord(record) {
+  if (!record) return "";
+  if (record.username) return `${record.username} (${roleLabels[record.role] || record.role || "sem perfil"})`;
+  if (record.description) return record.description;
+  if (record.name) return record.name;
+  if (record.paymentDate) return `${formatDate(record.paymentDate)} ${formatMoney(record.totalAmount || record.amount)}`;
+  if (record.expenseDate) return `${formatDate(record.expenseDate)} ${formatMoney(record.amount)} ${record.expenseType || ""}`.trim();
+  if (record.monthlyValue) return `${formatMoney(record.monthlyValue)} ${record.startDate || ""}`.trim();
+  if (record.message) return record.message;
+  if (record.endpoint) return record.endpoint;
+  return record.id || JSON.stringify(record).slice(0, 80);
+}
+
+function summarizeUser(user) {
+  if (!user) return null;
+  return { id: user.id, username: user.username, role: user.role };
+}
+
 function renderTable(bodyId, rows, rowTemplate) {
   const body = document.getElementById(bodyId);
   if (!rows.length) {
@@ -1131,15 +1788,22 @@ function renderList(id, rows, template) {
 }
 
 function actions(collection, id, formId) {
+  const editButton = canWriteCollection(collection) ? `<button class="small-button" data-edit="${collection}:${id}:${formId}" type="button">Editar</button>` : "";
+  const deleteButton = canDeleteRecords() ? `<button class="small-button" data-delete="${collection}:${id}" type="button">Excluir</button>` : "";
+  if (!editButton && !deleteButton) return "-";
   return `
     <div class="actions-cell">
-      <button class="small-button" data-edit="${collection}:${id}:${formId}" type="button">Editar</button>
-      <button class="small-button" data-delete="${collection}:${id}" type="button">Excluir</button>
+      ${editButton}
+      ${deleteButton}
     </div>
   `;
 }
 
 function editRecord(collection, id, formId) {
+  if (!canWriteCollection(collection)) {
+    alert("Seu perfil nao permite editar este registro.");
+    return;
+  }
   const record = state[collection].find((item) => item.id === id);
   const form = document.getElementById(formId);
   if (!record) return;
@@ -1147,6 +1811,7 @@ function editRecord(collection, id, formId) {
   Object.entries(record).forEach(([key, value]) => {
     if (form.elements[key]) form.elements[key].value = value;
   });
+  if (formId === "payment-form") updatePaymentTotal(form);
   form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -1180,24 +1845,30 @@ function bindTableActions() {
 }
 
 function deleteRecord(collection, id) {
+  if (!requirePermission("admin:write", "Apenas administradores podem excluir registros.")) return;
   if (!confirm("Deseja excluir este registro?")) return;
+  const before = state[collection].find((item) => item.id === id);
   state[collection] = state[collection].filter((item) => item.id !== id);
+  addAuditLog("record_deleted", collection, id, before, null, isFinancialCollection(collection));
   saveState();
   renderAll();
 }
 
 function editAccessUser(id) {
+  if (!requirePermission("admin:write", "Apenas administradores podem editar usuarios.")) return;
   const user = getStoredAccessUsers().find((item) => item.id === id);
   const form = document.getElementById("access-form");
   if (!user || !form) return;
   form.elements.id.value = user.id;
   form.elements.username.value = user.username;
   form.elements.password.value = "";
+  form.elements.role.value = user.role || "consulta";
   form.scrollIntoView({ behavior: "smooth", block: "start" });
   setText("settings-message", "Informe uma nova senha para alterar ou salve sem senha para manter a atual.");
 }
 
 function deleteAccessUser(id) {
+  if (!requirePermission("admin:write", "Apenas administradores podem excluir usuarios.")) return;
   const users = getStoredAccessUsers();
   const user = users.find((item) => item.id === id);
   if (!user) return;
@@ -1207,6 +1878,7 @@ function deleteAccessUser(id) {
   }
   if (!confirm(`Deseja excluir o usuario ${user.username}?`)) return;
   saveAuthUsers(users.filter((item) => item.id !== id));
+  addAuditLog("user_deleted", "users", user.id, summarizeUser(user), null, false);
   renderAccessUsers();
   setText("settings-message", "Usuario excluido.");
 }
@@ -1355,8 +2027,8 @@ function nextDueDate(day) {
 function exportReportsCsv() {
   const rows = reportMode === "summary"
     ? [["Indicador", "Resultado", "Leitura gerencial"]]
-    : [["Imovel", "Cliente", "Contato", "Vigencia", "Valor mensal", "Despesa vinculada", "Status"]];
-  const selector = reportMode === "summary" ? "#summary-report-body tr" : "#reports-body tr";
+    : [["Imovel", "Data", "Pagamento", "Encargo", "Total recebido", "Historico"]];
+  const selector = reportMode === "summary" ? "#summary-report-body tr" : "#revenue-report-body tr";
   document.querySelectorAll(selector).forEach((tr) => {
     const cells = [...tr.querySelectorAll("td")].map((td) => td.innerText.replace(/\s+/g, " ").trim());
     if (cells.length) rows.push(cells);
@@ -1369,14 +2041,15 @@ function exportReportsCsv() {
 function exportReportsExcel() {
   renderReports();
   const analyticTables = [
-    { title: "Resultado por imovel", selector: "#property-report-body", headers: ["Imovel", "Receita mensal", "Despesas apropriadas", "Taxas do locador", "Receita liquida"] },
+    { title: "Receitas lancadas", selector: "#revenue-report-body", headers: ["Imovel", "Data", "Pagamento", "Encargo", "Total recebido", "Historico"] },
+    { title: "Resultado por imovel", selector: "#property-report-body", headers: ["Imovel", "Receita recebida", "Despesas apropriadas", "Taxas do locador", "Receita liquida"] },
     { title: "Despesas por tipo", selector: "#expense-type-report-body", headers: ["Despesa", "Quantidade", "Total", "Participacao"] },
     { title: "Encargos e vencimentos", selector: "#charges-report-body", headers: ["Imovel", "Cliente", "Encargo", "Responsavel", "Vencimento base", "Vencimento ajustado"] },
     { title: "Contratos filtrados", selector: "#reports-body", headers: ["Imovel", "Cliente", "Contato", "Vigencia", "Valor mensal", "Despesa vinculada", "Status"] },
   ];
   const summaryTables = [
     { title: "Resumo executivo", selector: "#summary-report-body", headers: ["Indicador", "Resultado", "Leitura gerencial"] },
-    { title: "Resultado gerencial por imovel", selector: "#summary-property-body", headers: ["Imovel", "Receita", "Despesas", "Resultado", "Participacao na receita"] },
+    { title: "Resultado gerencial por imovel", selector: "#summary-property-body", headers: ["Imovel", "Receita", "Encargos", "Despesas", "Resultado", "Participacao na receita"] },
   ];
   const tables = reportMode === "summary" ? summaryTables : analyticTables;
   const sections = tables.map((table) => `
@@ -1456,6 +2129,10 @@ function createSampleData() {
       { id: uid("expense"), propertyId: propertyA.id, expenseType: "Manutencao", expenseDate: "2026-05-10", amount: 450, note: "Reparo eletrico" },
       { id: uid("expense"), propertyId: propertyB.id, expenseType: "Impostos e taxas", expenseDate: "2026-04-20", amount: 1300, note: "Taxa municipal" },
     ],
+    payments: [
+      { id: uid("payment"), propertyId: propertyA.id, paymentDate: "2026-05-10", amount: 2800, chargeAmount: 0, totalAmount: 2800, history: "Pagamento no vencimento" },
+      { id: uid("payment"), propertyId: propertyB.id, paymentDate: "2026-05-12", amount: 5200, chargeAmount: 180, totalAmount: 5380, history: "Pagamento com encargo por atraso" },
+    ],
   };
 }
 
@@ -1515,6 +2192,27 @@ function getFilteredExpenses(filters = getReportFilters()) {
     .filter((expense) => !filters.endDate || parseDate(expense.expenseDate) <= parseDate(filters.endDate));
 }
 
+function getFilteredPayments(filters = getReportFilters(), propertyId = document.getElementById("report-property")?.value || "all", clientId = document.getElementById("report-client")?.value || "all", status = document.getElementById("report-status")?.value || "all") {
+  const allowedProperties = getAllowedPaymentPropertyIds(clientId, status);
+  return state.payments
+    .filter((payment) => propertyId === "all" || payment.propertyId === propertyId)
+    .filter((payment) => !allowedProperties || allowedProperties.has(payment.propertyId))
+    .filter((payment) => !filters.startDate || parseDate(payment.paymentDate) >= parseDate(filters.startDate))
+    .filter((payment) => !filters.endDate || parseDate(payment.paymentDate) <= parseDate(filters.endDate))
+    .filter((payment) => !filters.minValue || Number(payment.totalAmount || 0) >= filters.minValue)
+    .filter((payment) => !filters.maxValue || Number(payment.totalAmount || 0) <= filters.maxValue);
+}
+
+function getAllowedPaymentPropertyIds(clientId, status) {
+  if (clientId === "all" && status === "all") return null;
+  return new Set(
+    state.contracts
+      .filter((contract) => clientId === "all" || contract.clientId === clientId)
+      .filter((contract) => status === "all" || getContractStatus(contract).key === status)
+      .map((contract) => contract.propertyId),
+  );
+}
+
 function getEnteredExpenses(propertyId, filters = getReportFilters()) {
   return getFilteredExpenses(filters)
     .filter((expense) => expense.propertyId === propertyId)
@@ -1538,6 +2236,35 @@ function daysUntil(dateString) {
   today.setHours(0, 0, 0, 0);
   const target = new Date(`${dateString}T00:00:00`);
   return Math.ceil((target - today) / 86400000);
+}
+
+function toMonthValue(date) {
+  if (!date) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function parseMonthValue(value) {
+  const [year, month] = String(value || "").split("-").map(Number);
+  return new Date(year || new Date().getFullYear(), (month || 1) - 1, 1);
+}
+
+function listMonths(startDate, endDate) {
+  const months = [];
+  const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+  while (cursor <= end) {
+    months.push(new Date(cursor));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return months.length ? months : [new Date(startDate.getFullYear(), startDate.getMonth(), 1)];
+}
+
+function toDateInputValue(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatMonth(date) {
+  return new Intl.DateTimeFormat("pt-BR", { month: "2-digit", year: "numeric" }).format(date);
 }
 
 function formatMoney(value) {
@@ -1570,3 +2297,217 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+
+
+/* =========================================================================
+ * Exportacoes do ERP financeiro - PDF, Excel (xlsx) e CSV
+ * Usa SheetJS (XLSX global) e jsPDF + autoTable carregados via CDN no HTML.
+ * Em caso de bloqueio da CDN, fallback para .xls (HTML) e janela de impressao.
+ * ========================================================================= */
+
+function getErpExportData() {
+  renderFinancialErp();
+  const period = getErpPeriod();
+  const receivables = buildAutomaticReceivables(period);
+  const payments = state.payments.filter((p) =>
+    isDateInPeriod(parseDate(p.paymentDate), period.startDate, period.endDate),
+  );
+  const expenses = state.expenses.filter((e) =>
+    isDateInPeriod(parseDate(e.expenseDate), period.startDate, period.endDate),
+  );
+  const receivedRevenue = payments.reduce((s, p) => s + Number(p.totalAmount || 0), 0);
+  const expectedRevenue = receivables.reduce((s, i) => s + i.expected, 0);
+  const expensesTotal = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+  const overdueTotal = receivables
+    .filter((i) => i.statusKey === "overdue")
+    .reduce((s, i) => s + i.balance, 0);
+  const operatingResult = receivedRevenue - expensesTotal;
+  const operatingMargin = receivedRevenue ? (operatingResult / receivedRevenue) * 100 : 0;
+  const totalInvestment = state.properties.reduce(
+    (s, p) => s + Number(p.investmentValue || 0),
+    0,
+  );
+  const annualizedRoi = totalInvestment
+    ? (operatingResult / totalInvestment) * (12 / period.months.length) * 100
+    : 0;
+
+  const summary = [
+    ["Periodo", `${formatMonth(period.startDate)} a ${formatMonth(period.endDate)}`],
+    ["Recebiveis previstos", formatMoney(expectedRevenue)],
+    ["Recebido no periodo", formatMoney(receivedRevenue)],
+    ["Inadimplencia vencida", formatMoney(overdueTotal)],
+    ["Despesas operacionais", formatMoney(expensesTotal)],
+    ["Resultado operacional", formatMoney(operatingResult)],
+    ["Margem operacional", `${formatNumber(operatingMargin)}%`],
+    ["ROI anualizado", `${formatNumber(annualizedRoi)}%`],
+  ];
+
+  const receivablesRows = receivables.map((i) => [
+    formatDate(toDateInputValue(i.dueDate)),
+    i.property?.description || "-",
+    i.client?.name || "-",
+    Number(i.expected.toFixed(2)),
+    Number(i.received.toFixed(2)),
+    Number(i.balance.toFixed(2)),
+    i.status,
+  ]);
+
+  const cashflowRows = period.months.map((monthDate) => {
+    const month = toMonthValue(monthDate);
+    const inflow = payments
+      .filter((p) => toMonthValue(parseDate(p.paymentDate)) === month)
+      .reduce((s, p) => s + Number(p.totalAmount || 0), 0);
+    const outflow = expenses
+      .filter((e) => toMonthValue(parseDate(e.expenseDate)) === month)
+      .reduce((s, e) => s + Number(e.amount || 0), 0);
+    return [formatMonth(monthDate), Number(inflow.toFixed(2)), Number(outflow.toFixed(2)), Number((inflow - outflow).toFixed(2))];
+  });
+
+  const expenseCatRows = Object.entries(
+    expenses.reduce((g, e) => {
+      const k = e.expenseType || "Outros";
+      g[k] = (g[k] || 0) + Number(e.amount || 0);
+      return g;
+    }, {}),
+  )
+    .map(([cat, amt]) => [cat, Number(amt.toFixed(2)), expensesTotal ? Number(((amt / expensesTotal) * 100).toFixed(2)) : 0])
+    .sort((a, b) => b[1] - a[1]);
+
+  const propRows = state.properties
+    .map((property) => {
+      const revenue = payments
+        .filter((p) => p.propertyId === property.id)
+        .reduce((s, p) => s + Number(p.totalAmount || 0), 0);
+      const expTotal = expenses
+        .filter((e) => e.propertyId === property.id)
+        .reduce((s, e) => s + Number(e.amount || 0), 0);
+      const result = revenue - expTotal;
+      const margin = revenue ? (result / revenue) * 100 : 0;
+      const investment = Number(property.investmentValue || 0);
+      const roi = investment ? (result / investment) * (12 / period.months.length) * 100 : 0;
+      return [property.description, Number(revenue.toFixed(2)), Number(expTotal.toFixed(2)), Number(result.toFixed(2)), Number(margin.toFixed(2)), Number(roi.toFixed(2))];
+    })
+    .filter((r) => r[1] || r[2] || r[3]);
+
+  return {
+    period,
+    summary,
+    receivables: { headers: ["Vencimento", "Imovel", "Cliente", "Previsto", "Recebido", "Saldo", "Status"], rows: receivablesRows },
+    cashflow: { headers: ["Mes", "Entradas", "Saidas", "Saldo"], rows: cashflowRows },
+    expenseCategories: { headers: ["Categoria", "Total", "Participacao %"], rows: expenseCatRows },
+    profitability: { headers: ["Imovel", "Receita", "Despesas", "Resultado", "Margem %", "ROI anualizado %"], rows: propRows },
+  };
+}
+
+function exportFinancialErpExcel() {
+  const data = getErpExportData();
+  const fileName = `erp-financeiro-${toMonthValue(data.period.startDate)}_a_${toMonthValue(data.period.endDate)}.xlsx`;
+
+  if (typeof XLSX === "undefined") {
+    alert("Biblioteca XLSX nao carregou. Verifique sua conexao para gerar o arquivo Excel.");
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+  const addSheet = (name, headers, rows, prefix = []) => {
+    const aoa = [...prefix];
+    if (headers) aoa.push(headers);
+    aoa.push(...rows);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+  };
+  addSheet("Resumo", null, data.summary, [[`ERP Financeiro - ${companyName}`], [`Gerado em ${formatDate(toIsoDate(new Date()))}`], []]);
+  addSheet("Contas a receber", data.receivables.headers, data.receivables.rows);
+  addSheet("Fluxo de caixa", data.cashflow.headers, data.cashflow.rows);
+  addSheet("Despesas por categoria", data.expenseCategories.headers, data.expenseCategories.rows);
+  addSheet("Rentabilidade por imovel", data.profitability.headers, data.profitability.rows);
+  XLSX.writeFile(wb, fileName);
+}
+
+function exportFinancialErpPdf() {
+  const data = getErpExportData();
+  const fileName = `erp-financeiro-${toMonthValue(data.period.startDate)}_a_${toMonthValue(data.period.endDate)}.pdf`;
+
+  const jsPDFCtor = window.jspdf?.jsPDF;
+  if (!jsPDFCtor) {
+    alert("Biblioteca jsPDF nao carregou. Verifique sua conexao para gerar o PDF.");
+    return;
+  }
+  const doc = new jsPDFCtor({ unit: "pt", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  doc.setFontSize(16);
+  doc.text(`ERP Financeiro - ${companyName}`, 40, 50);
+  doc.setFontSize(10);
+  doc.setTextColor(100);
+  doc.text(
+    `Periodo: ${formatMonth(data.period.startDate)} a ${formatMonth(data.period.endDate)}    -    Gerado em ${formatDate(toIsoDate(new Date()))}`,
+    40,
+    68,
+  );
+  doc.setTextColor(0);
+
+  const drawTable = (title, headers, rows) => {
+    if (typeof doc.autoTable !== "function") {
+      doc.setFontSize(12);
+      doc.text(title, 40, doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 30 : 100);
+      return;
+    }
+    doc.autoTable({
+      head: headers ? [headers] : undefined,
+      body: rows.map((r) => r.map((c) => (typeof c === "number" ? formatMoneyOrNumber(c) : String(c)))),
+      startY: doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 24 : 90,
+      margin: { left: 40, right: 40 },
+      styles: { fontSize: 9, cellPadding: 4 },
+      headStyles: { fillColor: [92, 23, 27], textColor: 255 },
+      didDrawPage: () => {
+        doc.setFontSize(11);
+        doc.setTextColor(92, 23, 27);
+        doc.text(title, 40, doc.lastAutoTable?.finalY ? 40 : 86);
+        doc.setTextColor(0);
+      },
+    });
+  };
+
+  // Resumo como tabela simples
+  if (typeof doc.autoTable === "function") {
+    doc.autoTable({
+      body: data.summary,
+      startY: 90,
+      margin: { left: 40, right: 40 },
+      styles: { fontSize: 10, cellPadding: 5 },
+      columnStyles: { 0: { fontStyle: "bold", cellWidth: 200 } },
+    });
+  }
+  drawTable("Contas a receber", data.receivables.headers, data.receivables.rows);
+  drawTable("Fluxo de caixa", data.cashflow.headers, data.cashflow.rows);
+  drawTable("Despesas por categoria", data.expenseCategories.headers, data.expenseCategories.rows);
+  drawTable("Rentabilidade por imovel", data.profitability.headers, data.profitability.rows);
+
+  doc.save(fileName);
+}
+
+function formatMoneyOrNumber(value) {
+  if (Number.isFinite(value)) return formatMoney(value);
+  return String(value);
+}
+
+function exportFinancialErpCsv() {
+  const data = getErpExportData();
+  const lines = [];
+  const push = (title, headers, rows) => {
+    lines.push(title);
+    if (headers) lines.push(headers.join(";"));
+    rows.forEach((r) => lines.push(r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")));
+    lines.push("");
+  };
+  push("Resumo", null, data.summary);
+  push("Contas a receber", data.receivables.headers, data.receivables.rows);
+  push("Fluxo de caixa", data.cashflow.headers, data.cashflow.rows);
+  push("Despesas por categoria", data.expenseCategories.headers, data.expenseCategories.rows);
+  push("Rentabilidade por imovel", data.profitability.headers, data.profitability.rows);
+  downloadTextFile(
+    "\ufeff" + lines.join("\n"),
+    `erp-financeiro-${toMonthValue(data.period.startDate)}_a_${toMonthValue(data.period.endDate)}.csv`,
+    "text/csv;charset=utf-8",
+  );
+}
+

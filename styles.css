@@ -464,6 +464,26 @@ td {
   color: #953232;
 }
 
+.status.paid {
+  background: #e2f4ef;
+  color: #11624f;
+}
+
+.status.partial {
+  background: #e7efff;
+  color: #234a8f;
+}
+
+.status.overdue {
+  background: #f7dddd;
+  color: #953232;
+}
+
+.status.open {
+  background: #fff0d7;
+  color: #8d5a05;
+}
+
 .report-actions,
 .filters {
   display: flex;
@@ -648,6 +668,41 @@ td {
   color: var(--danger);
 }
 
+.compact-table {
+  min-width: 560px;
+}
+
+.dre-list {
+  display: grid;
+  gap: 10px;
+}
+
+.dre-row {
+  align-items: center;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.dre-row span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dre-row strong,
+.positive-text {
+  color: var(--primary-dark);
+}
+
+.dre-row.negative strong,
+.negative-text {
+  color: var(--danger);
+}
+
 @media (max-width: 980px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -729,4 +784,19 @@ td {
     display: block;
     margin-bottom: 18px;
   }
+}
+
+/* Botoes de exportacao do ERP financeiro (adicionado em v1.6.0) */
+.export-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.report-actions.panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
 }
