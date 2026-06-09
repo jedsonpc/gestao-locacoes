@@ -1,13 +1,15 @@
-// Rio dos Passos PWA - service worker v1.6.0
-// Estratégia: network-first para HTML/JS (atualizações aplicam na hora),
-// cache-first para assets estáticos (ícones, manifest, CSS).
-const appVersion = "1.6.0";
+// Rio dos Passos PWA - service worker
+// A linha __APP_VERSION__ eh reescrita automaticamente pelo GitHub Actions
+// no momento do deploy (vira o SHA do commit). Cada deploy = novo cache.
+const appVersion = ["127.0.0.1", "localhost"].includes(self.location.hostname)
+  ? "local-1.7.8"
+  : "__APP_VERSION__";
 const cacheName = `gestao-locacoes-${appVersion}`;
 const staticFiles = [
   "./",
   "./index.html",
   "./styles.css",
-  "./app.js?v=1.6.0",
+  "./app.js",
   "./manifest.webmanifest",
   "./icon.svg",
   "./icon-192.png",
@@ -21,16 +23,14 @@ self.addEventListener("install", (event) => {
       Promise.allSettled(staticFiles.map((f) => cache.add(f).catch(() => null))),
     ),
   );
-  self.skipWaiting();
+  // NAO fazemos skipWaiting automatico: aguardamos confirmacao do usuario
+  // via o banner "nova versao disponivel".
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(keys.filter((key) => key !== cacheName).map((key) => caches.delete(key))),
-      )
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== cacheName).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -51,8 +51,12 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Network-first para HTML e JS: garante que correções de código apliquem
-  // na próxima visita, sem ficar preso em versão antiga em cache.
+  // version.json: sempre rede, nunca cache (eh o checador de nova versao)
+  if (url.pathname.endsWith("/version.json")) {
+    event.respondWith(fetch(event.request, { cache: "no-store" }).catch(() => new Response("{}", { headers: { "Content-Type": "application/json" } })));
+    return;
+  }
+
   if (isHtmlOrScript(event.request, url)) {
     event.respondWith(
       fetch(event.request)
@@ -63,12 +67,11 @@ self.addEventListener("fetch", (event) => {
           }
           return response;
         })
-        .catch(() => caches.match(event.request).then((cached) => cached || caches.match("./index.html"))),
+        .catch(() => caches.match(event.request).then((c) => c || caches.match("./index.html"))),
     );
     return;
   }
 
-  // Cache-first para assets estáticos (CSS, ícones, fontes, etc.)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const networkResponse = fetch(event.request)

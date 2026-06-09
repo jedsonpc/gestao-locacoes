@@ -361,6 +361,17 @@ label {
   font-weight: 700;
 }
 
+.toggle-field {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.toggle-field input {
+  min-height: auto;
+  width: auto;
+}
+
 input,
 select,
 textarea {
@@ -384,6 +395,26 @@ textarea {
 
 .wide {
   grid-column: span 2;
+}
+
+.backup-summary {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.backup-summary strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.backup-summary span {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .charge-fieldset {
@@ -799,4 +830,22 @@ td {
   align-items: flex-start;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.update-package-info {
+  align-items: center;
+  background: #fff7e8;
+  border: 1px solid #f0d6a8;
+  border-radius: 8px;
+  color: var(--text);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.update-package-info span {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
 }

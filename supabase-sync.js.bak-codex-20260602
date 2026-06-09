@@ -112,67 +112,10 @@
     );
   }
 
-  function mergeCollections(localItems = [], remoteItems = [], deletedIds = new Set()) {
-    const merged = new Map();
-    remoteItems.forEach((item) => {
-      if (item?.id && !deletedIds.has(item.id)) merged.set(item.id, item);
-    });
-    localItems.forEach((item) => {
-      if (!item?.id) return;
-      if (deletedIds.has(item.id)) {
-        merged.delete(item.id);
-        return;
-      }
-      const current = merged.get(item.id);
-      const currentTime = new Date(current?.updatedAt || 0).getTime();
-      const itemTime = new Date(item.updatedAt || 0).getTime();
-      if (!current || itemTime >= currentTime) merged.set(item.id, item);
-    });
-    return [...merged.values()];
-  }
-
-  function getLocallyDeletedIds(localState, collection) {
-    return new Set(
-      (localState.auditLogs || [])
-        .filter((log) => log.action === "record_deleted" && log.collection === collection && log.recordId)
-        .map((log) => log.recordId)
-    );
-  }
-
-  function mergeStateForSave(localState, remoteState) {
-    if (!remoteState?.data && !remoteState?.properties) return localState;
-    const remoteData = remoteState.data || remoteState;
-    const merged = { ...remoteData, ...localState };
-    ["properties", "clients", "contracts", "expenses", "payments"].forEach((collection) => {
-      merged[collection] = mergeCollections(
-        Array.isArray(localState[collection]) ? localState[collection] : [],
-        Array.isArray(remoteData[collection]) ? remoteData[collection] : [],
-        getLocallyDeletedIds(localState, collection)
-      );
-    });
-    merged.auditLogs = [
-      ...(Array.isArray(remoteData.auditLogs) ? remoteData.auditLogs : []),
-      ...(Array.isArray(localState.auditLogs) ? localState.auditLogs : []),
-    ]
-      .filter((log, index, logs) => log?.id && logs.findIndex((item) => item.id === log.id) === index)
-      .slice(-500);
-    return merged;
-  }
-
   async function persistRemoteState(state) {
-    let snapshot = cloneState(state);
+    const snapshot = cloneState(state);
     lastLocalUpdate = Date.now();
     const user = await getCurrentUser();
-    const { data: remoteRow, error: readError } = await client
-      .from("workspace_state")
-      .select("data")
-      .eq("id", cfg.WORKSPACE_ID)
-      .maybeSingle();
-
-    if (!readError && remoteRow?.data) {
-      snapshot = mergeStateForSave(snapshot, remoteRow.data);
-    }
-
     const { data, error } = await client
       .from("workspace_state")
       .upsert(

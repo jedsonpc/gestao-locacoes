@@ -135,8 +135,6 @@
               <select name="type" required>
                 <option value="">Selecione</option>
                 <option>Sala comercial</option>
-                <option>Apartamento</option>
-                <option>Imovel Residencial</option>
                 <option>Terreno</option>
                 <option>Area comercial</option>
                 <option>Galpao</option>
@@ -188,7 +186,7 @@
             <input type="hidden" name="id" />
             <label>
               CNPJ ou CPF
-              <input name="document" required inputmode="numeric" maxlength="18" placeholder="00.000.000/0000-00 ou 000.000.000-00" />
+              <input name="document" required placeholder="00.000.000/0000-00 ou CPF" />
             </label>
             <label>
               Nome
@@ -210,7 +208,6 @@
               <button class="primary-button" type="submit">Salvar cliente</button>
               <button class="ghost-button" data-reset="client-form" type="button">Novo</button>
             </div>
-            <span class="form-message wide" id="client-document-message"></span>
           </form>
           <div class="table-wrap panel">
             <table>
@@ -341,19 +338,6 @@
               Imovel
               <select name="propertyId" required></select>
             </label>
-            <input type="hidden" name="contractId" />
-            <label class="contract-manual hidden">
-              Contrato vinculado
-              <select name="contractPicker"></select>
-            </label>
-            <label>
-              Codigo do contrato
-              <input name="contractCode" type="text" readonly placeholder="Vinculado pela data" />
-            </label>
-            <label>
-              Nome do locador
-              <input name="lessorName" type="text" readonly placeholder="Vinculado ao contrato" />
-            </label>
             <label>
               Tipo de despesa
               <select name="expenseType" required>
@@ -387,7 +371,6 @@
               <thead>
                 <tr>
                   <th>Imovel</th>
-                  <th>Contrato</th>
                   <th>Tipo</th>
                   <th>Data</th>
                   <th>Valor</th>
@@ -408,10 +391,6 @@
               <select name="propertyId" required></select>
             </label>
             <input type="hidden" name="contractId" />
-            <label class="contract-manual hidden">
-              Contrato vinculado
-              <select name="contractPicker"></select>
-            </label>
             <label>
               Codigo do contrato
               <input name="contractCode" type="text" readonly placeholder="Selecione um imovel com contrato" />
@@ -479,16 +458,12 @@
           </div>
           <div class="filters panel">
             <label>
-              Ano
-              <select id="erp-year"></select>
-            </label>
-            <label>
               Competencia inicial
-              <select id="erp-start-month"></select>
+              <input id="erp-start" type="month" />
             </label>
             <label>
               Competencia final
-              <select id="erp-end-month"></select>
+              <input id="erp-end" type="month" />
             </label>
           </div>
           <div class="metrics-grid">
@@ -630,15 +605,6 @@
           </div>
           <div class="filters panel">
             <label>
-              Relatorio
-              <select id="report-dataset">
-                <option value="financial">Financeiro e contratos</option>
-                <option value="properties">Cadastro de imoveis</option>
-                <option value="clients">Cadastro de clientes</option>
-                <option value="contracts">Cadastro de contratos</option>
-              </select>
-            </label>
-            <label>
               Imovel
               <select id="report-property"></select>
             </label>
@@ -683,18 +649,6 @@
               Valor maximo
               <input id="report-max-value" type="number" min="0" step="0.01" placeholder="R$" />
             </label>
-          </div>
-          <div class="registration-report table-wrap panel hidden">
-            <div class="panel-header">
-              <h3 id="registration-report-title">Relatorio de cadastro</h3>
-              <span id="registration-report-count">0 registros</span>
-            </div>
-            <table>
-              <thead>
-                <tr id="registration-report-head"></tr>
-              </thead>
-              <tbody id="registration-report-body"></tbody>
-            </table>
           </div>
           <div class="metrics-grid">
             <article class="metric">
@@ -891,11 +845,47 @@
         </section>
 
         <section class="view" id="settings">
-          <div class="form-grid panel" id="access-panel">
+          <form class="form-grid panel" id="access-form">
             <div class="form-intro wide">
               <h3>Acesso ao sistema</h3>
-              <p>O login e as senhas agora sao gerenciados exclusivamente pelo Supabase. As senhas antigas salvas neste navegador sao removidas automaticamente ao abrir o app.</p>
+              <p>Cadastre, altere ou exclua usuarios de login neste navegador. Para ambientes com equipe, use tambem uma base online com regras de seguranca.</p>
             </div>
+            <input type="hidden" name="id" />
+            <label>
+              Usuario
+              <input name="username" required />
+            </label>
+            <label>
+              Senha
+              <input name="password" type="password" minlength="6" placeholder="Minimo de 6 caracteres" />
+            </label>
+            <label>
+              Perfil
+              <select name="role" required>
+                <option value="admin">Administrador</option>
+                <option value="financeiro">Financeiro</option>
+                <option value="operacional">Operacional</option>
+                <option value="consulta">Consulta</option>
+              </select>
+            </label>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">Salvar usuario</button>
+              <button class="ghost-button" data-reset="access-form" type="button">Novo</button>
+            </div>
+          </form>
+          <div class="table-wrap panel">
+            <table class="access-table">
+              <thead>
+                <tr>
+                  <th>Usuario</th>
+                  <th>Perfil</th>
+                  <th>Senha</th>
+                  <th>Atualizado em</th>
+                  <th>Acoes</th>
+                </tr>
+              </thead>
+              <tbody id="access-users-body"></tbody>
+            </table>
           </div>
 
           <form class="form-grid panel" id="sync-form">
@@ -918,39 +908,10 @@
             </div>
             <span class="form-message wide" id="settings-message"></span>
           </form>
-
-          <div class="form-grid panel" id="backup-panel">
-            <div class="form-intro wide">
-              <h3>Backups locais</h3>
-              <p>O app salva copias automaticas neste navegador. O botao Baixar backup funciona em qualquer navegador; a gravacao direta em D:\App\backups depende de permissao do navegador.</p>
-            </div>
-            <div class="backup-summary wide">
-              <strong id="backup-status">Nenhum backup local gerado.</strong>
-              <span id="backup-address">Endereco local: localStorage:gestao-locacoes-backups-v1</span>
-            </div>
-            <label class="wide">
-              Backup para restaurar ou baixar
-              <select id="backup-select">
-                <option value="">Nenhum backup disponivel</option>
-              </select>
-            </label>
-            <label class="wide">
-              Importar arquivo de backup
-              <input id="backup-import-file" type="file" accept="application/json,.json" />
-            </label>
-            <div class="form-actions wide">
-              <button class="ghost-button" id="backup-folder" type="button">Escolher pasta local</button>
-              <button class="primary-button" id="backup-create" type="button">Gerar backup agora</button>
-              <button class="ghost-button" id="backup-download" type="button">Baixar backup</button>
-              <button class="danger-button" id="backup-restore" type="button">Restaurar backup</button>
-            </div>
-            <span class="form-message wide" id="backup-message"></span>
-          </div>
-
           <div class="form-grid panel" id="update-settings">
             <div class="form-intro wide">
               <h3>Atualizacao do app</h3>
-              <p>Quando houver uma nova publicacao no GitHub Pages, o app pode buscar e aplicar a versao mais recente automaticamente. Para outro computador, baixe o pacote desta versao e substitua os arquivos do app na maquina de destino.</p>
+              <p>Quando houver uma nova publicacao no GitHub Pages, o app pode buscar e aplicar a versao mais recente automaticamente.</p>
             </div>
             <label class="toggle-field wide">
               <input id="auto-update-enabled" type="checkbox" />
@@ -958,29 +919,13 @@
             </label>
             <div class="form-actions wide">
               <button class="ghost-button" id="check-app-update" type="button">Verificar atualizacao agora</button>
-              <button class="primary-button" id="download-app-update" type="button">Baixar pacote de atualizacao</button>
-            </div>
-            <div class="update-package-info wide">
-              <strong>Pacote offline:</strong>
-              <span id="update-package-name">rio-passos-atualizacao.zip</span>
             </div>
             <span class="form-message wide" id="app-update-status">Aguardando verificacao.</span>
           </div>
           <div class="table-wrap panel">
             <div class="panel-header">
               <h3>Auditoria e logs de alteracao</h3>
-              <span id="audit-log-summary">Ultimos cinco acessos</span>
-            </div>
-            <div class="filters audit-filters">
-              <label>
-                Inicio
-                <input id="audit-start" type="date" />
-              </label>
-              <label>
-                Fim
-                <input id="audit-end" type="date" />
-              </label>
-              <button class="ghost-button" id="audit-clear-period" type="button">Limpar periodo</button>
+              <span>Ultimos eventos de acesso e movimentacao financeira</span>
             </div>
             <table>
               <thead>
@@ -1010,8 +955,8 @@
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     <script src="supabase-config.js" defer></script>
-    <script src="supabase-sync.js?v=1.7.8" defer></script>
-    <script src="update-checker.js?v=1.7.8" defer></script>
-    <script src="app.js?v=1.7.8" defer></script>
+    <script src="supabase-sync.js?v=1.7.1" defer></script>
+    <script src="update-checker.js?v=1.7.1" defer></script>
+    <script src="app.js?v=1.7.1" defer></script>
   </body>
 </html>

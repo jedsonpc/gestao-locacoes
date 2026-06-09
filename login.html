@@ -33,10 +33,16 @@
   <script src="supabase-config.js"></script>
   <script src="supabase-sync.js"></script>
   <script>
-    // Se ja estiver logado, redireciona
     (async () => {
-      const u = await window.SupabaseSync.getCurrentUser();
-      if (u) location.href = "index.html";
+      const err = document.getElementById("err");
+      if (!window.SupabaseSync) {
+        err.textContent = "Nao foi possivel carregar a conexao online. Verifique a internet e recarregue.";
+        err.style.display = "block";
+        document.getElementById("submit-btn").disabled = true;
+        return;
+      }
+      const user = await window.SupabaseSync.getCurrentUser();
+      if (user) location.href = "index.html";
     })();
 
     document.getElementById("login-form").addEventListener("submit", async (e) => {
