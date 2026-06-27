@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=1.8.4" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <section class="login-screen" id="login-screen" aria-label="Acesso ao sistema">
@@ -65,10 +65,8 @@
           <div class="topbar-actions">
             <span class="sync-status" id="current-user-badge">Usuario nao identificado</span>
             <span class="sync-status" id="sync-status">Offline local</span>
-            <span class="sync-status app-version-status">
-              <strong id="metric-app-version">local-1.8.4</strong>
-              <small id="metric-app-updated">25/06/2026 13:19</small>
-            </span>
+            <button class="ghost-button" id="seed-data" type="button">Carregar exemplo</button>
+            <button class="danger-button" id="clear-data" type="button">Limpar dados</button>
             <button class="ghost-button" id="logout" type="button">Sair</button>
           </div>
         </section>
@@ -97,26 +95,8 @@
             </article>
             <article class="metric">
               <span>Taxa de ocupacao</span>
-              <strong id="metric-occupancy">0,00%</strong>
+              <strong id="metric-occupancy">0%</strong>
             </article>
-          </div>
-
-          <div class="split-layout deadline-layout">
-            <section class="panel">
-              <div class="panel-header">
-                <h3>Vencimentos de contratos</h3>
-                <span id="upcoming-count">0 itens</span>
-              </div>
-              <div class="list" id="upcoming-list"></div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-header">
-                <h3>Reajustes proximos</h3>
-                <span id="adjustment-count">0 itens</span>
-              </div>
-              <div class="list" id="adjustment-list"></div>
-            </section>
           </div>
 
           <div class="dashboard-charts-grid">
@@ -161,26 +141,36 @@
             </section>
           </div>
 
-          <section class="panel financial-dashboard-panel">
-            <div class="panel-header">
-              <h3>Dashboard financeiro por imovel</h3>
-              <span id="financial-period-caption">Competencia atual, ano e acumulado</span>
-            </div>
-            <div class="table-wrap">
-              <table class="financial-dashboard-table">
-                <thead>
-                  <tr>
-                    <th>Imovel</th>
-                    <th>Faturamento</th>
-                    <th>Despesas</th>
-                    <th>Liquido</th>
-                    <th>Liquido medio / m2</th>
-                  </tr>
-                </thead>
-                <tbody id="property-result-body"></tbody>
-              </table>
-            </div>
-          </section>
+          <div class="split-layout">
+            <section class="panel">
+              <div class="panel-header">
+                <h3>Vencimentos e reajustes</h3>
+                <span id="upcoming-count">0 itens</span>
+              </div>
+              <div class="list" id="upcoming-list"></div>
+            </section>
+
+            <section class="panel financial-dashboard-panel">
+              <div class="panel-header">
+                <h3>Dashboard financeiro por imovel</h3>
+                <span id="financial-period-caption">Competencia atual, ano e acumulado</span>
+              </div>
+              <div class="table-wrap">
+                <table class="financial-dashboard-table">
+                  <thead>
+                    <tr>
+                      <th>Imovel</th>
+                      <th>Faturamento</th>
+                      <th>Despesas</th>
+                      <th>Liquido</th>
+                      <th>Liquido medio / m2</th>
+                    </tr>
+                  </thead>
+                  <tbody id="property-result-body"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
         </section>
 
         <section class="view" id="properties">
@@ -213,7 +203,7 @@
             </label>
             <label>
               Valor do imovel / investimento
-              <input name="investmentValue" type="text" inputmode="decimal" data-money-input placeholder="Opcional para ROI" />
+              <input name="investmentValue" type="number" min="0" step="0.01" placeholder="Opcional para ROI" />
             </label>
             <label class="wide">
               Documentacao no Google Drive
@@ -226,7 +216,7 @@
             </div>
           </form>
           <div class="table-wrap panel">
-            <table class="action-table">
+            <table>
               <thead>
                 <tr>
                   <th>Descricao</th>
@@ -273,7 +263,7 @@
             <span class="form-message wide" id="client-document-message"></span>
           </form>
           <div class="table-wrap panel">
-            <table class="action-table">
+            <table>
               <thead>
                 <tr>
                   <th>Documento</th>
@@ -314,7 +304,7 @@
             </label>
             <label>
               Valor mensal
-              <input name="monthlyValue" type="text" inputmode="decimal" data-money-input required />
+              <input name="monthlyValue" type="number" min="0" step="0.01" required />
             </label>
             <label>
               Periodicidade do reajuste
@@ -389,30 +379,19 @@
                 </select>
               </label>
             </fieldset>
-            <fieldset class="wide charge-fieldset contract-adjustment-fieldset">
-              <legend>Valores ajustados na vigencia</legend>
-              <label class="inline-check">
-                <input name="hasAdjustedRent" type="checkbox" />
-                Informar valores ajustados por periodo
-              </label>
-              <input name="rentAdjustments" type="hidden" />
-              <div class="contract-adjustments-list wide" id="contract-adjustments-list"></div>
-              <button class="ghost-button wide" id="add-contract-adjustment" type="button">Adicionar ajuste</button>
-            </fieldset>
             <div class="form-actions">
               <button class="primary-button" type="submit">Salvar contrato</button>
               <button class="ghost-button" data-reset="contract-form" type="button">Novo</button>
             </div>
           </form>
           <div class="table-wrap panel">
-            <table class="action-table">
+            <table>
               <thead>
                 <tr>
                   <th>Imovel</th>
                   <th>Cliente</th>
                   <th>Vigencia</th>
                   <th>Valor</th>
-                  <th>Valor ajustado</th>
                   <th>Garantia</th>
                   <th>Reajuste</th>
                   <th>Taxas</th>
@@ -431,10 +410,6 @@
             <label>
               Data
               <input name="expenseDate" type="date" required />
-            </label>
-            <label>
-              Competencia
-              <input name="competence" type="month" required />
             </label>
             <label>
               Imovel
@@ -466,7 +441,7 @@
             </label>
             <label>
               Valor
-              <input name="amount" type="text" inputmode="decimal" data-money-input required />
+              <input name="amount" type="number" min="0" step="0.01" required />
             </label>
             <label class="wide">
               Observacao
@@ -497,14 +472,13 @@
               </label>
               <button class="ghost-button" id="expense-history-clear" type="button">Limpar filtro</button>
             </div>
-            <table class="action-table">
+            <table>
               <thead>
                 <tr>
                   <th>Imovel</th>
                   <th>Contrato</th>
                   <th>Tipo</th>
                   <th>Data</th>
-                  <th>Competencia</th>
                   <th>Valor</th>
                   <th>Observacao</th>
                   <th>Acoes</th>
@@ -521,10 +495,6 @@
             <label>
               Data do pagamento
               <input name="paymentDate" type="date" required />
-            </label>
-            <label>
-              Competencia
-              <input name="competence" type="month" required />
             </label>
             <label>
               Imovel
@@ -545,15 +515,15 @@
             </label>
             <label>
               Valor da receita
-              <input name="amount" type="text" inputmode="decimal" data-money-input required />
+              <input name="amount" type="number" min="0" step="0.01" required />
             </label>
             <label>
               Encargo
-              <input name="chargeAmount" type="text" inputmode="decimal" data-money-input placeholder="Opcional" />
+              <input name="chargeAmount" type="number" min="0" step="0.01" placeholder="Opcional" />
             </label>
             <label>
               Valor total
-              <input name="totalAmount" type="text" inputmode="decimal" data-money-input readonly />
+              <input name="totalAmount" type="number" min="0" step="0.01" readonly />
             </label>
             <label class="wide">
               Historico
@@ -584,14 +554,13 @@
               </label>
               <button class="ghost-button" id="payment-history-clear" type="button">Limpar filtro</button>
             </div>
-            <table class="action-table">
+            <table>
               <thead>
                 <tr>
                   <th>Imovel</th>
                   <th>Contrato</th>
                   <th>Locador</th>
                   <th>Data</th>
-                  <th>Competencia</th>
                   <th>Receita</th>
                   <th>Encargo</th>
                   <th>Total</th>
@@ -604,7 +573,7 @@
           </div>
         </section>
 
-        <section class="view management-view" id="financial-erp">
+        <section class="view" id="financial-erp">
           <div class="report-actions panel">
             <div>
               <h3>ERP financeiro imobiliario</h3>
@@ -630,12 +599,12 @@
               <select id="erp-end-month"></select>
             </label>
           </div>
-          <div class="metrics-grid erp-metrics-grid">
-            <article class="metric priority-metric">
+          <div class="metrics-grid">
+            <article class="metric">
               <span>Recebiveis previstos</span>
               <strong id="erp-expected-revenue">R$ 0,00</strong>
             </article>
-            <article class="metric priority-metric">
+            <article class="metric">
               <span>Recebido no periodo</span>
               <strong id="erp-received-revenue">R$ 0,00</strong>
             </article>
@@ -649,15 +618,15 @@
             </article>
             <article class="metric">
               <span>Margem operacional</span>
-              <strong id="erp-operating-margin">0,00%</strong>
+              <strong id="erp-operating-margin">0%</strong>
             </article>
             <article class="metric">
               <span>ROI anualizado</span>
-              <strong id="erp-roi">0,00%</strong>
+              <strong id="erp-roi">0%</strong>
             </article>
             <article class="metric">
               <span>ROI total acumulado</span>
-              <strong id="erp-total-roi">0,00%</strong>
+              <strong id="erp-total-roi">0%</strong>
             </article>
             <article class="metric">
               <span>Despesas operacionais</span>
@@ -668,7 +637,7 @@
               <strong id="erp-operating-result">R$ 0,00</strong>
             </article>
           </div>
-          <div class="split-layout erp-overview-grid">
+          <div class="split-layout">
             <section class="panel">
               <div class="panel-header">
                 <h3>DRE imobiliaria</h3>
@@ -682,7 +651,7 @@
                 <span>Entradas, saidas e saldo por mes</span>
               </div>
               <div class="table-wrap">
-                <table class="compact-table management-table">
+                <table class="compact-table">
                   <thead>
                     <tr>
                       <th>Competencia</th>
@@ -701,7 +670,7 @@
               <h3>Contas a receber automaticas</h3>
               <span>Geradas pelos contratos ativos no periodo</span>
             </div>
-            <table class="management-table erp-receivables-table">
+            <table>
               <thead>
                 <tr>
                   <th>Vencimento</th>
@@ -717,13 +686,13 @@
               <tbody id="erp-receivables-body"></tbody>
             </table>
           </div>
-          <div class="split-layout erp-secondary-grid">
+          <div class="split-layout">
             <section class="table-wrap panel">
               <div class="panel-header">
                 <h3>Despesas por categoria</h3>
                 <span>Participacao no periodo</span>
               </div>
-              <table class="compact-table management-table">
+              <table class="compact-table">
                 <thead>
                   <tr>
                     <th>Categoria</th>
@@ -734,30 +703,30 @@
                 <tbody id="erp-expense-category-body"></tbody>
               </table>
             </section>
+            <section class="table-wrap panel">
+              <div class="panel-header">
+                <h3>Rentabilidade por imovel</h3>
+                <span>Receita, despesas, margem e ROI</span>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Imovel</th>
+                    <th>Receita</th>
+                    <th>Despesas</th>
+                    <th>Resultado</th>
+                    <th>Margem</th>
+                    <th>ROI anual</th>
+                    <th>ROI total</th>
+                  </tr>
+                </thead>
+                <tbody id="erp-property-profitability-body"></tbody>
+              </table>
+            </section>
           </div>
-          <section class="table-wrap panel profitability-panel">
-            <div class="panel-header">
-              <h3>Rentabilidade por imovel</h3>
-              <span>Receita, despesas, margem e ROI</span>
-            </div>
-            <table class="management-table erp-profitability-table">
-              <thead>
-                <tr>
-                  <th>Imovel</th>
-                  <th>Receita</th>
-                  <th>Despesas</th>
-                  <th>Resultado</th>
-                  <th>Margem operacional</th>
-                  <th>ROI</th>
-                  <th>Leitura</th>
-                </tr>
-              </thead>
-              <tbody id="erp-property-profitability-body"></tbody>
-            </table>
-          </section>
         </section>
 
-        <section class="view management-view" id="reports">
+        <section class="view" id="reports">
           <div class="report-actions panel">
             <div>
               <h3>Relatorios analiticos e gerenciais</h3>
@@ -822,11 +791,11 @@
             </label>
             <label>
               Valor minimo
-              <input id="report-min-value" type="text" inputmode="decimal" data-money-input placeholder="R$" />
+              <input id="report-min-value" type="number" min="0" step="0.01" placeholder="R$" />
             </label>
             <label>
               Valor maximo
-              <input id="report-max-value" type="text" inputmode="decimal" data-money-input placeholder="R$" />
+              <input id="report-max-value" type="number" min="0" step="0.01" placeholder="R$" />
             </label>
           </div>
           <div class="registration-report table-wrap panel hidden">
@@ -834,14 +803,14 @@
               <h3 id="registration-report-title">Relatorio de cadastro</h3>
               <span id="registration-report-count">0 registros</span>
             </div>
-            <table class="management-table">
+            <table>
               <thead>
                 <tr id="registration-report-head"></tr>
               </thead>
               <tbody id="registration-report-body"></tbody>
             </table>
           </div>
-          <div class="metrics-grid report-metrics-grid">
+          <div class="metrics-grid">
             <article class="metric">
               <span>Receita recebida</span>
               <strong id="report-revenue">R$ 0,00</strong>
@@ -872,7 +841,7 @@
             </article>
             <article class="metric">
               <span>Margem liquida</span>
-              <strong id="report-net-margin">0,00%</strong>
+              <strong id="report-net-margin">0%</strong>
             </article>
           </div>
           <div class="summary-report" id="summary-report">
@@ -912,12 +881,12 @@
                 </article>
                 <article class="summary-item">
                   <span>Margem liquida</span>
-                  <strong id="summary-net-margin">0,00%</strong>
+                  <strong id="summary-net-margin">0%</strong>
                 </article>
               </div>
             </section>
             <div class="table-wrap panel">
-              <table class="management-table">
+              <table>
                 <thead>
                   <tr>
                     <th>Indicador</th>
@@ -929,7 +898,7 @@
               </table>
             </div>
             <div class="table-wrap panel">
-              <table class="management-table">
+              <table>
                 <thead>
                   <tr>
                     <th>Imovel</th>
@@ -961,12 +930,11 @@
             </section>
           </div>
           <div class="analytic-report table-wrap panel">
-            <table class="management-table">
+            <table>
               <thead>
                 <tr>
                   <th>Imovel</th>
                   <th>Data</th>
-                  <th>Competencia</th>
                   <th>Receita</th>
                   <th>Encargo</th>
                   <th>Total recebido</th>
@@ -977,7 +945,7 @@
             </table>
           </div>
           <div class="analytic-report table-wrap panel">
-            <table class="management-table">
+            <table>
               <thead>
                 <tr>
                   <th>Imovel</th>
@@ -991,7 +959,7 @@
             </table>
           </div>
           <div class="analytic-report table-wrap panel">
-            <table class="management-table">
+            <table>
               <thead>
                 <tr>
                   <th>Despesa</th>
@@ -1004,7 +972,7 @@
             </table>
           </div>
           <div class="analytic-report table-wrap panel">
-            <table class="management-table">
+            <table>
               <thead>
                 <tr>
                   <th>Imovel</th>
@@ -1019,7 +987,7 @@
             </table>
           </div>
           <div class="analytic-report table-wrap panel">
-            <table class="management-table">
+            <table>
               <thead>
                 <tr>
                   <th>Imovel</th>
@@ -1027,7 +995,6 @@
                   <th>Contato</th>
                   <th>Vigencia</th>
                   <th>Valor mensal</th>
-                  <th>Valor ajustado</th>
                   <th>Garantia/carencia</th>
                   <th>Despesa vinculada</th>
                   <th>Status</th>
@@ -1130,7 +1097,7 @@
               </label>
               <button class="ghost-button" id="audit-clear-period" type="button">Limpar periodo</button>
             </div>
-            <table class="management-table">
+            <table>
               <thead>
                 <tr>
                   <th>Data e hora</th>
@@ -1158,9 +1125,8 @@
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     <script src="supabase-config.js" defer></script>
-    <script src="supabase-sync.js?v=1.8.4" defer></script>
-    <script src="update-checker.js?v=local-1.8.4" defer></script>
-    <script src="app.js?v=local-1.8.4" defer></script>
+    <script src="supabase-sync.js?v=1.8.0" defer></script>
+    <script src="update-checker.js?v=1.8.0" defer></script>
+    <script src="app.js?v=1.8.0" defer></script>
   </body>
 </html>
-

@@ -2,7 +2,7 @@
 // A linha __APP_VERSION__ eh reescrita automaticamente pelo GitHub Actions
 // no momento do deploy (vira o SHA do commit). Cada deploy = novo cache.
 const appVersion = ["127.0.0.1", "localhost"].includes(self.location.hostname)
-  ? "local-1.7.8"
+  ? "local-1.8.4"
   : "__APP_VERSION__";
 const cacheName = `gestao-locacoes-${appVersion}`;
 const staticFiles = [

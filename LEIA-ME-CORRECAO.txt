@@ -1,0 +1,8 @@
+Correcao 2026-06-19
+
+- Login: adiciona limite de espera nas chamadas Supabase para o botao nao ficar travado em Entrando.
+- Inicio do app: se a nuvem demorar, usa dados locais em vez de travar a tela.
+- Painel e relatorios: ajusta valores grandes para quebrarem linha dentro dos cards.
+- Instalador: inclui os mesmos arquivos corrigidos em Rio-Passos-Instalador-Completo\app.
+
+Para aplicar na pasta C:\App Imobiliaria, execute APLICAR-CORRECAO.ps1 com permissao para gravar nessa pasta. O script cria backup antes de substituir os arquivos.

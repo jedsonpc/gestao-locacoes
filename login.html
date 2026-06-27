@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -35,14 +35,22 @@
   <script>
     (async () => {
       const err = document.getElementById("err");
+      const btn = document.getElementById("submit-btn");
       if (!window.SupabaseSync) {
         err.textContent = "Nao foi possivel carregar a conexao online. Verifique a internet e recarregue.";
         err.style.display = "block";
-        document.getElementById("submit-btn").disabled = true;
+        btn.disabled = true;
         return;
       }
-      const user = await window.SupabaseSync.getCurrentUser();
-      if (user) location.href = "index.html";
+      try {
+        const user = await window.SupabaseSync.getCurrentUser();
+        if (user) location.replace("index.html");
+      } catch {
+        err.textContent = "Nao foi possivel verificar uma sessao anterior. Informe email e senha para entrar novamente.";
+        err.style.display = "block";
+      } finally {
+        btn.disabled = false;
+      }
     })();
 
     document.getElementById("login-form").addEventListener("submit", async (e) => {
@@ -52,11 +60,14 @@
       err.style.display = "none";
       btn.disabled = true; btn.textContent = "Entrando...";
       try {
-        await window.SupabaseSync.signIn(
+        if (!window.SupabaseSync) throw new Error("Conexao online nao carregada. Verifique a internet e recarregue.");
+        const signedUser = await window.SupabaseSync.signIn(
           document.getElementById("email").value.trim(),
           document.getElementById("password").value
         );
-        location.href = "index.html";
+        const user = signedUser || await window.SupabaseSync.getCurrentUser();
+        if (!user) throw new Error("Login aceito, mas a sessao nao foi gravada no navegador. Recarregue e tente novamente.");
+        location.replace("index.html");
       } catch (e2) {
         err.textContent = "Falha no login: " + (e2.message || e2);
         err.style.display = "block";
