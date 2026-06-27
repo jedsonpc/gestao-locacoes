@@ -1,6 +1,5 @@
-// update-checker.js
-// Registra o service worker, procura novas versoes e permite controlar
-// atualizacao automatica pela tela "Acesso e nuvem".
+﻿// update-checker.js
+// Registra o service worker, procura novas versoes e controla instalacao/atualizacao.
 (function () {
   const autoUpdateKey = "gestao-auto-update-v1";
   const checkIntervalMs = 60000;
@@ -9,6 +8,7 @@
   let waitingWorker = null;
   let registrationPromise = null;
   let deferredInstallPrompt = null;
+  let installButtons = [];
 
   function isAutoUpdateEnabled() {
     return localStorage.getItem(autoUpdateKey) !== "off";
@@ -23,6 +23,79 @@
     const status = document.getElementById("app-update-status");
     if (status) status.textContent = text;
   }
+
+  function isStandalone() {
+    return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+  }
+
+  function isIos() {
+    return /iphone|ipad|ipod/i.test(window.navigator.userAgent) && !window.MSStream;
+  }
+
+  function isAndroid() {
+    return /android/i.test(window.navigator.userAgent);
+  }
+
+  function getInstallHelpText() {
+    if (isStandalone()) return "App ja instalado neste dispositivo.";
+    if (deferredInstallPrompt) return "Toque em Instalar app para adicionar este app ao celular.";
+    if (isIos()) return "No iPhone: toque em Compartilhar e escolha Adicionar a Tela de Inicio.";
+    if (isAndroid()) return "No Android: abra o menu do navegador e escolha Instalar app ou Adicionar a tela inicial.";
+    return "Para instalar, use o menu do navegador e escolha Instalar app ou Adicionar a tela inicial.";
+  }
+
+  function collectInstallButtons() {
+    installButtons = Array.from(document.querySelectorAll(".app-install-action"));
+  }
+
+  function updateInstallButtons({ announce = false } = {}) {
+    collectInstallButtons();
+    const installed = isStandalone();
+    const helpText = getInstallHelpText();
+
+    installButtons.forEach((button) => {
+      button.classList.toggle("hidden", installed);
+      button.disabled = false;
+      button.textContent = deferredInstallPrompt ? "Instalar app neste dispositivo" : "Como instalar o app";
+      button.title = helpText;
+      button.setAttribute("aria-label", helpText);
+    });
+
+    if (announce && !installed) updateStatusText(helpText);
+  }
+
+  async function handleInstallClick() {
+    if (isStandalone()) {
+      updateStatusText("App ja instalado neste dispositivo.");
+      return;
+    }
+
+    if (!deferredInstallPrompt) {
+      const helpText = getInstallHelpText();
+      updateStatusText(helpText);
+      alert(helpText);
+      return;
+    }
+
+    deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice.catch(() => null);
+    if (choice?.outcome === "accepted") updateStatusText("App instalado neste dispositivo.");
+    else updateStatusText("Instalacao cancelada. Voce pode tentar novamente pelo botao Instalar.");
+    deferredInstallPrompt = null;
+    updateInstallButtons();
+  }
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    updateInstallButtons({ announce: true });
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    updateInstallButtons();
+    updateStatusText("App instalado neste dispositivo.");
+  });
 
   function showBanner() {
     if (document.getElementById("update-banner")) return;
@@ -84,7 +157,6 @@
   function bindControls() {
     const toggle = document.getElementById("auto-update-enabled");
     const button = document.getElementById("check-app-update");
-    const installButton = document.getElementById("install-app-button");
 
     if (toggle) {
       toggle.checked = isAutoUpdateEnabled();
@@ -98,32 +170,11 @@
       });
     }
 
-    if (installButton) {
-      const updateInstallButton = () => {
-        const installed = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
-        installButton.classList.toggle("hidden", installed || !deferredInstallPrompt);
-      };
-      installButton.addEventListener("click", async () => {
-        if (!deferredInstallPrompt) return;
-        deferredInstallPrompt.prompt();
-        const choice = await deferredInstallPrompt.userChoice.catch(() => null);
-        if (choice?.outcome === "accepted") updateStatusText("App instalado neste dispositivo.");
-        deferredInstallPrompt = null;
-        updateInstallButton();
-      });
-      updateInstallButton();
-      window.addEventListener("beforeinstallprompt", (event) => {
-        event.preventDefault();
-        deferredInstallPrompt = event;
-        updateInstallButton();
-        updateStatusText("Instalacao disponivel para este dispositivo.");
-      });
-      window.addEventListener("appinstalled", () => {
-        deferredInstallPrompt = null;
-        updateInstallButton();
-        updateStatusText("App instalado neste dispositivo.");
-      });
-    }
+    collectInstallButtons();
+    installButtons.forEach((installButton) => {
+      installButton.addEventListener("click", handleInstallClick);
+    });
+    updateInstallButtons({ announce: true });
   }
 
   if ("serviceWorker" in navigator) {
