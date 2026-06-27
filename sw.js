@@ -4,6 +4,7 @@
 const appVersion = ["127.0.0.1", "localhost"].includes(self.location.hostname)
   ? "local-1.8.4"
   : "__APP_VERSION__";
+const cachePrefix = "gestao-locacoes-";
 const cacheName = `gestao-locacoes-${appVersion}`;
 const staticFiles = [
   "./",
@@ -16,6 +17,28 @@ const staticFiles = [
   "./icon-512.png",
   "./logo-imobiliaria-rio.svg",
 ];
+const offlineHtml = `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rio Passos offline</title>
+  <style>
+    body{margin:0;font-family:Arial,sans-serif;background:#f5f7f8;color:#1f2933;display:grid;min-height:100vh;place-items:center;padding:24px}
+    main{max-width:520px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.08);padding:28px}
+    h1{color:#5c171b;font-size:24px;margin:0 0 10px}
+    p{line-height:1.5;margin:0 0 14px}
+    button{background:#5c171b;border:0;border-radius:6px;color:#fff;cursor:pointer;font-weight:700;padding:10px 14px}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Voce esta offline</h1>
+    <p>Os dados ja abertos continuam disponiveis neste dispositivo. Assim que a internet voltar, o app sincroniza as alteracoes pendentes com o Supabase.</p>
+    <button type="button" onclick="location.reload()">Tentar novamente</button>
+  </main>
+</body>
+</html>`;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -30,13 +53,16 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== cacheName).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith(cachePrefix) && k !== cacheName).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
 
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+  if (event.data?.type === "CHECK_UPDATES") {
+    event.waitUntil(self.registration.update());
+  }
 });
 
 function isHtmlOrScript(request, url) {
@@ -67,7 +93,7 @@ self.addEventListener("fetch", (event) => {
           }
           return response;
         })
-        .catch(() => caches.match(event.request).then((c) => c || caches.match("./index.html"))),
+        .catch(() => caches.match(event.request).then((c) => c || caches.match("./index.html") || new Response(offlineHtml, { headers: { "Content-Type": "text/html; charset=utf-8" } }))),
     );
     return;
   }

@@ -1,11 +1,11 @@
-﻿{
+{
     "name":  "app-imobiliaria",
     "private":  true,
     "version":  "0.0.0",
     "type":  "module",
     "scripts":  {
                     "dev":  "vite",
-                    "build":  "vite build",
+                    "build":  "vite build && node scripts/copy-static-to-dist.mjs",
                     "lint":  "eslint .",
                     "preview":  "vite preview",
                     "verify:app":  "powershell -ExecutionPolicy Bypass -File tools/verificar-app.ps1 \u0026\u0026 node tests/financial-rules.test.mjs",

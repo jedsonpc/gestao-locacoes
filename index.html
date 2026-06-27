@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Imobiliaria Rio dos Passos Ltda - Gestao de Locacoes</title>
     <meta name="theme-color" content="#5c171b" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#5c171b" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#3f1014" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Rio Passos" />
@@ -464,6 +466,11 @@
                 <option>Outros</option>
               </select>
             </label>
+            <label class="wide charge-rule-field hidden" id="expense-charge-rule-field">
+              Encargo do contrato
+              <select name="chargeRule"></select>
+            </label>
+            <span class="form-message wide" id="expense-charge-message"></span>
             <label>
               Valor
               <input name="amount" type="text" inputmode="decimal" data-money-input required />
@@ -1105,6 +1112,7 @@
               <span>Atualizar automaticamente quando uma nova versao estiver disponivel</span>
             </label>
             <div class="form-actions wide">
+              <button class="ghost-button app-install-action hidden" id="install-app-button" type="button">Instalar app neste dispositivo</button>
               <button class="ghost-button" id="check-app-update" type="button">Verificar atualizacao agora</button>
               <button class="primary-button" id="download-app-update" type="button">Baixar pacote de atualizacao</button>
             </div>

@@ -11,6 +11,20 @@
   "theme_color": "#5c171b",
   "orientation": "any",
   "categories": ["business", "productivity", "finance"],
+  "shortcuts": [
+    {
+      "name": "ERP financeiro",
+      "short_name": "ERP",
+      "url": "./?view=financial-erp",
+      "description": "Abrir o painel financeiro"
+    },
+    {
+      "name": "Contratos",
+      "short_name": "Contratos",
+      "url": "./?view=contracts",
+      "description": "Abrir o cadastro de contratos"
+    }
+  ],
   "icons": [
     {
       "src": "./icon-192.png",

@@ -1397,6 +1397,65 @@ td {
   font-size: 13px;
 }
 
+.charge-rule-field select:disabled,
+#expense-form input[name="amount"]:disabled,
+#expense-form button[type="submit"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+#expense-charge-message:not(:empty) {
+  background: #fff7e8;
+  border: 1px solid #f0d6a8;
+  border-radius: 8px;
+  color: #5c171b;
+  display: block;
+  padding: 10px 12px;
+}
+
+.app-install-action {
+  border-color: #5c171b;
+  color: #5c171b;
+  font-weight: 700;
+}
+
+.app-update-banner {
+  align-items: center;
+  background: #5c171b;
+  border-radius: 8px;
+  bottom: 16px;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.22);
+  color: #fff;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  left: 50%;
+  max-width: min(92vw, 560px);
+  padding: 12px 18px;
+  position: fixed;
+  transform: translateX(-50%);
+  z-index: 9999;
+}
+
+.app-update-banner button {
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 7px 14px;
+}
+
+.update-banner-primary {
+  background: #fff;
+  border: 0;
+  color: #5c171b;
+}
+
+.update-banner-secondary {
+  background: transparent;
+  border: 1px solid #fff;
+  color: #fff;
+}
+
 /* Ajustes de legibilidade para valores longos nos relatorios. */
 #reports .metric strong,
 #reports .summary-item strong,

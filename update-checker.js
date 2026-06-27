@@ -8,6 +8,7 @@
   let currentVersion = null;
   let waitingWorker = null;
   let registrationPromise = null;
+  let deferredInstallPrompt = null;
 
   function isAutoUpdateEnabled() {
     return localStorage.getItem(autoUpdateKey) !== "off";
@@ -27,14 +28,11 @@
     if (document.getElementById("update-banner")) return;
     const bar = document.createElement("div");
     bar.id = "update-banner";
-    bar.style.cssText =
-      "position:fixed;bottom:16px;left:50%;transform:translateX(-50%);" +
-      "background:#5c171b;color:#fff;padding:12px 18px;border-radius:8px;" +
-      "box-shadow:0 6px 20px rgba(0,0,0,.2);z-index:9999;display:flex;gap:12px;align-items:center;font-family:Arial,sans-serif;";
+    bar.className = "app-update-banner";
     bar.innerHTML =
       '<span>Nova versao disponivel.</span>' +
-      '<button id="update-btn" style="background:#fff;color:#5c171b;border:none;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer">Atualizar agora</button>' +
-      '<button id="update-later" style="background:transparent;color:#fff;border:1px solid #fff;padding:6px 10px;border-radius:6px;cursor:pointer">Depois</button>';
+      '<button id="update-btn" class="update-banner-primary" type="button">Atualizar agora</button>' +
+      '<button id="update-later" class="update-banner-secondary" type="button">Depois</button>';
     document.body.appendChild(bar);
 
     document.getElementById("update-btn").onclick = applyUpdate;
@@ -86,6 +84,7 @@
   function bindControls() {
     const toggle = document.getElementById("auto-update-enabled");
     const button = document.getElementById("check-app-update");
+    const installButton = document.getElementById("install-app-button");
 
     if (toggle) {
       toggle.checked = isAutoUpdateEnabled();
@@ -96,6 +95,33 @@
       button.addEventListener("click", async () => {
         updateStatusText("Verificando atualizacao...");
         await checkNow({ apply: false });
+      });
+    }
+
+    if (installButton) {
+      const updateInstallButton = () => {
+        const installed = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+        installButton.classList.toggle("hidden", installed || !deferredInstallPrompt);
+      };
+      installButton.addEventListener("click", async () => {
+        if (!deferredInstallPrompt) return;
+        deferredInstallPrompt.prompt();
+        const choice = await deferredInstallPrompt.userChoice.catch(() => null);
+        if (choice?.outcome === "accepted") updateStatusText("App instalado neste dispositivo.");
+        deferredInstallPrompt = null;
+        updateInstallButton();
+      });
+      updateInstallButton();
+      window.addEventListener("beforeinstallprompt", (event) => {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+        updateInstallButton();
+        updateStatusText("Instalacao disponivel para este dispositivo.");
+      });
+      window.addEventListener("appinstalled", () => {
+        deferredInstallPrompt = null;
+        updateInstallButton();
+        updateStatusText("App instalado neste dispositivo.");
       });
     }
   }

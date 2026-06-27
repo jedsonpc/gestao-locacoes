@@ -123,6 +123,12 @@ const chargeRules = [
   },
 ];
 
+const expenseChargeTypeRules = {
+  "condominio": ["condoFeeResponsible"],
+  "impostos e taxas": ["iptuResponsible", "spuResponsible", "fireFeeResponsible"],
+  "seguro": ["fireFeeResponsible"],
+};
+
 async function resolveSupabaseUser(retries = 5, delayMs = 250) {
   for (let attempt = 0; attempt < retries; attempt += 1) {
     try {
@@ -151,6 +157,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   try {
     await reconcileCloudState();
+    await window.SupabaseSync.flushPendingState?.();
   } catch (error) {
     console.warn("Nao foi possivel sincronizar com a nuvem ao iniciar. Usando dados locais.", error);
   }
@@ -430,10 +437,6 @@ async function writeBackupToSelectedFolder(backup) {
   return true;
 }
 
-function getLatestBackup() {
-  return loadBackups().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
-}
-
 function downloadJsonFile(fileName, payload) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -622,19 +625,27 @@ function uid(prefix) {
 function bindNavigation() {
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.addEventListener("click", () => {
-      const target = button.dataset.view;
-      if (!canAccessView(target)) {
-        alert("Seu perfil nao tem permissao para acessar esta area.");
-        return;
-      }
-      document.querySelectorAll(".nav-button").forEach((item) => item.classList.remove("active"));
-      document.querySelectorAll(".view").forEach((item) => item.classList.remove("active"));
-      button.classList.add("active");
-      document.getElementById(target).classList.add("active");
-      document.getElementById("view-title").textContent = viewTitles[target];
-      renderAll();
+      activateView(button.dataset.view, { showAccessAlert: true });
     });
   });
+  const initialView = new URLSearchParams(location.search).get("view");
+  if (initialView && document.getElementById(initialView)) activateView(initialView);
+}
+
+function activateView(target, options = {}) {
+  if (!canAccessView(target)) {
+    if (options.showAccessAlert) alert("Seu perfil nao tem permissao para acessar esta area.");
+    return false;
+  }
+  const button = document.querySelector(`.nav-button[data-view="${CSS.escape(target)}"]`);
+  if (!button) return false;
+  document.querySelectorAll(".nav-button").forEach((item) => item.classList.remove("active"));
+  document.querySelectorAll(".view").forEach((item) => item.classList.remove("active"));
+  button.classList.add("active");
+  document.getElementById(target).classList.add("active");
+  document.getElementById("view-title").textContent = viewTitles[target];
+  renderAll();
+  return true;
 }
 
 function bindForms() {
@@ -692,11 +703,17 @@ function bindForms() {
       alert("Para lancar despesa, selecione um imovel com contrato vinculado.");
       return;
     }
+    const blockedCharge = getBlockedExpenseCharge(event.currentTarget, contract);
+    if (blockedCharge) {
+      updateExpenseChargeGuard(event.currentTarget, contract);
+      alert(`${blockedCharge.label} consta no contrato como responsabilidade do cliente. Lance apenas despesas do locador.`);
+      return;
+    }
     upsertFromForm(event.currentTarget, "expenses", "expense", normalizeExpense);
   });
   const expenseForm = document.getElementById("expense-form");
   bindFinancialCompetenceFields(expenseForm, "expenseDate", () => updateExpenseContractInfo(expenseForm));
-  ["propertyId", "contractPicker"].forEach((name) => {
+  ["propertyId", "contractPicker", "expenseType", "chargeRule"].forEach((name) => {
     expenseForm.elements[name]?.addEventListener("change", () => updateExpenseContractInfo(expenseForm));
   });
   syncFinancialCompetence(expenseForm, "expenseDate", { overwrite: false });
@@ -994,7 +1011,10 @@ function upsertFromForm(form, collectionName, prefix, normalizer = (value) => va
     renderContractAdjustmentRows(form, []);
     syncContractFinancialTermFields(form);
   }
-  if (collectionName === "expenses") syncFinancialCompetence(form, "expenseDate", { overwrite: true });
+  if (collectionName === "expenses") {
+    syncFinancialCompetence(form, "expenseDate", { overwrite: true });
+    updateExpenseContractInfo(form);
+  }
   if (collectionName === "payments") {
     syncFinancialCompetence(form, "paymentDate", { overwrite: true });
     updatePaymentTotal(form);
@@ -1111,7 +1131,7 @@ async function validateAndFillClientDocument(form) {
     setText("client-document-message", companyNameValue
       ? `Dados publicos carregados para ${companyNameValue}.`
       : "CNPJ validado, mas a consulta nao retornou nome empresarial.");
-  } catch (error) {
+  } catch {
     setText("client-document-message", "CNPJ validado pelos digitos. Nao foi possivel consultar os dados publicos agora.");
   }
 }
@@ -1332,7 +1352,13 @@ function getContractAdjustedRentText(contract) {
 function normalizeExpense(record) {
   const contract = findFinancialContract(record.propertyId, record.expenseDate, record.contractId || record.contractPicker);
   const client = findClient(contract?.clientId);
-  const { contractPicker, ...cleanRecord } = record;
+  const blockedCharge = getBlockedExpenseChargeFromRecord(record, contract);
+  if (blockedCharge) {
+    throw new Error(`${blockedCharge.label} consta no contrato como responsabilidade do cliente.`);
+  }
+  const cleanRecord = { ...record };
+  delete cleanRecord.contractPicker;
+  delete cleanRecord.chargeRule;
   return {
     ...cleanRecord,
     contractId: contract?.id || "",
@@ -1344,12 +1370,47 @@ function normalizeExpense(record) {
   };
 }
 
+function getExpenseChargeRuleKeys(expenseType) {
+  return expenseChargeTypeRules[String(expenseType || "").trim().toLowerCase()] || [];
+}
+
+function getExpenseChargeRules(expenseType) {
+  const keys = getExpenseChargeRuleKeys(expenseType);
+  return chargeRules.filter((rule) => keys.includes(rule.key));
+}
+
+function getSelectedExpenseChargeRule(form) {
+  const rules = getExpenseChargeRules(form?.elements.expenseType?.value);
+  if (!rules.length) return null;
+  const selectedKey = form?.elements.chargeRule?.value || "";
+  return rules.find((rule) => rule.key === selectedKey) || rules[0] || null;
+}
+
+function getBlockedExpenseCharge(form, contract) {
+  return getBlockedExpenseChargeFromRecord(
+    {
+      expenseType: form?.elements.expenseType?.value,
+      chargeRule: form?.elements.chargeRule?.value,
+    },
+    contract,
+  );
+}
+
+function getBlockedExpenseChargeFromRecord(record, contract) {
+  if (!contract) return null;
+  const rules = getExpenseChargeRules(record?.expenseType);
+  if (!rules.length) return null;
+  const selectedRule = rules.find((rule) => rule.key === record?.chargeRule) || rules[0];
+  return (contract[selectedRule.key] || "cliente") === "cliente" ? selectedRule : null;
+}
+
 function normalizePayment(record) {
   const amount = parseMoneyInput(record.amount);
   const chargeAmount = parseMoneyInput(record.chargeAmount);
   const contract = findFinancialContract(record.propertyId, record.paymentDate, record.contractId || record.contractPicker);
   const client = findClient(contract?.clientId);
-  const { contractPicker, ...cleanRecord } = record;
+  const cleanRecord = { ...record };
+  delete cleanRecord.contractPicker;
   return {
     ...cleanRecord,
     contractId: contract?.id || "",
@@ -1374,7 +1435,45 @@ function updatePaymentContractInfo(form = document.getElementById("payment-form"
 }
 
 function updateExpenseContractInfo(form = document.getElementById("expense-form")) {
-  return updateFinancialContractInfo(form, "expenseDate");
+  const contract = updateFinancialContractInfo(form, "expenseDate");
+  updateExpenseChargeGuard(form, contract);
+  return contract;
+}
+
+function updateExpenseChargeGuard(form = document.getElementById("expense-form"), contract = null) {
+  if (!form) return;
+  const ruleField = document.getElementById("expense-charge-rule-field");
+  const ruleSelect = form.elements.chargeRule;
+  const amountInput = form.elements.amount;
+  const saveButton = form.querySelector("button[type='submit']");
+  const rules = getExpenseChargeRules(form.elements.expenseType?.value);
+  const showRuleSelect = rules.length > 0;
+
+  if (ruleSelect) {
+    const previousValue = ruleSelect.value;
+    ruleSelect.innerHTML = "";
+    rules.forEach((rule) => ruleSelect.append(new Option(rule.label, rule.key)));
+    ruleSelect.value = rules.some((rule) => rule.key === previousValue) ? previousValue : (rules[0]?.key || "");
+    ruleSelect.required = showRuleSelect;
+    ruleSelect.disabled = !showRuleSelect;
+  }
+  ruleField?.classList.toggle("hidden", !showRuleSelect);
+
+  const selectedRule = getSelectedExpenseChargeRule(form, contract);
+  const responsible = selectedRule && contract ? (contract[selectedRule.key] || "cliente") : "";
+  const blocked = selectedRule && responsible === "cliente";
+  amountInput?.toggleAttribute("disabled", Boolean(blocked));
+  saveButton?.toggleAttribute("disabled", Boolean(blocked));
+
+  if (!showRuleSelect) {
+    setText("expense-charge-message", "");
+  } else if (!contract) {
+    setText("expense-charge-message", "Selecione um imovel com contrato para validar a responsabilidade do encargo.");
+  } else if (blocked) {
+    setText("expense-charge-message", `${selectedRule.label} esta como responsabilidade do cliente no contrato. O lancamento de despesa do locador foi bloqueado.`);
+  } else {
+    setText("expense-charge-message", `${selectedRule.label} esta como responsabilidade do locador. Lancamento liberado.`);
+  }
 }
 
 function updateFinancialContractInfo(form, dateFieldName) {
@@ -1845,15 +1944,6 @@ function populateSelect(select, rows, placeholder, labelKey, includeAll = false)
   }
 }
 
-function getPropertiesWithLinkedContracts() {
-  const linkedPropertyIds = new Set(
-    state.contracts
-      .filter((contract) => getContractStatus(contract).key !== "expired")
-      .map((contract) => contract.propertyId),
-  );
-  return state.properties.filter((property) => linkedPropertyIds.has(property.id));
-}
-
 function getPropertiesWithAnyContracts() {
   const linkedPropertyIds = new Set(state.contracts.map((contract) => contract.propertyId));
   return state.properties.filter((property) => linkedPropertyIds.has(property.id));
@@ -2240,17 +2330,6 @@ function sumPaymentsInPeriod(payments, startDate, endDate) {
     .reduce((sum, payment) => sum + Number(payment.totalAmount || 0), 0);
 }
 
-function countContractMonthsInPeriod(contract, periodStart, periodEnd) {
-  const contractStart = parseDate(contract.startDate);
-  const contractEnd = parseDate(contract.endDate);
-  if (!contractStart || !contractEnd || !periodStart || !periodEnd) return 0;
-
-  const start = maxDate(firstDayOfMonth(contractStart), firstDayOfMonth(periodStart));
-  const end = minDate(firstDayOfMonth(contractEnd), firstDayOfMonth(periodEnd));
-  if (start > end) return 0;
-  return (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth() + 1;
-}
-
 function contractOverlapsPeriod(contract, periodStart, periodEnd) {
   const contractStart = parseDate(contract.startDate);
   const contractEnd = parseDate(contract.endDate);
@@ -2366,14 +2445,6 @@ function formatCompetence(value) {
 
 function firstDayOfMonth(date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-function maxDate(left, right) {
-  return left > right ? left : right;
-}
-
-function minDate(left, right) {
-  return left < right ? left : right;
 }
 
 function parseAreaValue(area) {
@@ -3533,11 +3604,6 @@ function summarizeRecord(record) {
   return record.id || JSON.stringify(record).slice(0, 80);
 }
 
-function summarizeUser(user) {
-  if (!user) return null;
-  return { id: user.id, username: user.username, role: user.role };
-}
-
 function renderTable(bodyId, rows, rowTemplate) {
   const body = document.getElementById(bodyId);
   if (!rows.length) {
@@ -3644,12 +3710,12 @@ function deleteRecord(collection, id) {
   renderAll();
 }
 
-function editAccessUser(id) {
+function editAccessUser() {
   purgeLocalAccessUsers();
   setText("settings-message", "Usuarios locais foram desativados. Edite usuarios no painel Auth do Supabase.");
 }
 
-function deleteAccessUser(id) {
+function deleteAccessUser() {
   purgeLocalAccessUsers();
   setText("settings-message", "Usuarios locais foram removidos. A autenticacao ativa e feita pelo Supabase.");
 }
@@ -4139,10 +4205,6 @@ function findFinancialContract(propertyId, launchDate, preferredContractId = "")
   return matchingContracts.length === 1 ? matchingContracts[0] : null;
 }
 
-function findPaymentContract(propertyId, paymentDate, preferredContractId = "") {
-  return findFinancialContract(propertyId, paymentDate, preferredContractId);
-}
-
 function getContractCode(contract) {
   if (!contract?.id) return "";
   return String(contract.id).replace(/^contract-?/, "CTR-").slice(0, 12).toUpperCase();
@@ -4405,24 +4467,25 @@ function exportFinancialErpExcel() {
   const data = getErpExportData();
   const fileName = `erp-financeiro-${toMonthValue(data.period.startDate)}_a_${toMonthValue(data.period.endDate)}.xlsx`;
 
-  if (typeof XLSX === "undefined") {
+  const xlsx = window.XLSX;
+  if (!xlsx) {
     alert("Biblioteca XLSX nao carregou. Verifique sua conexao para gerar o arquivo Excel.");
     return;
   }
-  const wb = XLSX.utils.book_new();
+  const wb = xlsx.utils.book_new();
   const addSheet = (name, headers, rows, prefix = []) => {
     const aoa = [...prefix];
     if (headers) aoa.push(headers);
     aoa.push(...rows);
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+    const ws = xlsx.utils.aoa_to_sheet(aoa);
+    xlsx.utils.book_append_sheet(wb, ws, name.slice(0, 31));
   };
   addSheet("Resumo", null, data.summary, [[`ERP Financeiro - ${companyName}`], [`Gerado em ${formatDate(toIsoDate(new Date()))}`], []]);
   addSheet("Contas a receber", data.receivables.headers, data.receivables.rows);
   addSheet("Fluxo de caixa", data.cashflow.headers, data.cashflow.rows);
   addSheet("Despesas por categoria", data.expenseCategories.headers, data.expenseCategories.rows);
   addSheet("Rentabilidade por imovel", data.profitability.headers, data.profitability.rows);
-  XLSX.writeFile(wb, fileName);
+  xlsx.writeFile(wb, fileName);
 }
 
 function exportFinancialErpPdf() {
@@ -4435,7 +4498,6 @@ function exportFinancialErpPdf() {
     return;
   }
   const doc = new jsPDFCtor({ unit: "pt", format: "a4" });
-  const pageW = doc.internal.pageSize.getWidth();
   doc.setFontSize(16);
   doc.text(`ERP Financeiro - ${companyName}`, 40, 50);
   doc.setFontSize(10);

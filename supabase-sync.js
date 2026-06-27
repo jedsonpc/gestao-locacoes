@@ -32,7 +32,9 @@
   });
   const CACHE_KEY = "gestao-supabase-cache-v1";
   const META_KEY = "gestao-supabase-meta-v1";
+  const PENDING_KEY = "gestao-supabase-pending-v1";
   let saveTimer = null;
+  let flushingPending = false;
   let lastLocalUpdate = 0;
   const DEFAULT_TIMEOUT_MS = 15000;
 
@@ -159,6 +161,35 @@
     }
   }
 
+  function queuePendingState(state, reason = "offline") {
+    try {
+      localStorage.setItem(PENDING_KEY, JSON.stringify({
+        state,
+        reason,
+        queuedAt: new Date().toISOString(),
+      }));
+    } catch {
+      console.warn("[Supabase] Nao foi possivel registrar sincronizacao pendente.");
+    }
+  }
+
+  function loadPendingState() {
+    try {
+      const pending = localStorage.getItem(PENDING_KEY);
+      return pending ? JSON.parse(pending) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function clearPendingState() {
+    try {
+      localStorage.removeItem(PENDING_KEY);
+    } catch {
+      console.warn("[Supabase] Nao foi possivel limpar sincronizacao pendente.");
+    }
+  }
+
   function countStateRecords(state) {
     return ["properties", "clients", "contracts", "expenses", "payments", "auditLogs"].reduce(
       (counts, key) => {
@@ -282,6 +313,20 @@
     };
   }
 
+  async function flushPendingState() {
+    if (flushingPending || !navigator.onLine) return null;
+    const pending = loadPendingState();
+    if (!pending?.state) return null;
+    flushingPending = true;
+    try {
+      const result = await persistRemoteState(pending.state);
+      clearPendingState();
+      return result;
+    } finally {
+      flushingPending = false;
+    }
+  }
+
   function saveRemoteState(state) {
     const snapshot = cloneState(state);
     cacheState(snapshot);
@@ -289,12 +334,17 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
       try {
+        if (!navigator.onLine) {
+          queuePendingState(snapshot, "offline");
+          return;
+        }
         await persistRemoteState(snapshot);
       } catch (error) {
+        queuePendingState(snapshot, error.message || "save_failed");
         alert(
           "Falha ao salvar na nuvem: " +
           error.message +
-          "\nOs dados foram mantidos neste dispositivo como backup."
+          "\nOs dados foram mantidos neste dispositivo e serao reenviados automaticamente."
         );
       }
     }, 500);
@@ -304,7 +354,18 @@
     const snapshot = cloneState(state);
     cacheState(snapshot);
     clearTimeout(saveTimer);
-    return persistRemoteState(snapshot);
+    if (!navigator.onLine) {
+      queuePendingState(snapshot, "offline");
+      return { queued: true, updatedAt: null, counts: countStateRecords(snapshot) };
+    }
+    try {
+      const result = await persistRemoteState(snapshot);
+      clearPendingState();
+      return result;
+    } catch (error) {
+      queuePendingState(snapshot, error.message || "save_failed");
+      throw error;
+    }
   }
 
   function subscribeChanges(onChange) {
@@ -337,7 +398,12 @@
     loadRemoteState,
     saveRemoteState,
     saveRemoteStateNow,
+    flushPendingState,
     subscribeChanges,
     client,
   };
+
+  window.addEventListener("online", () => {
+    flushPendingState().catch((error) => console.warn("[Supabase] Reenvio pendente falhou:", error));
+  });
 })();
