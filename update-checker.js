@@ -36,12 +36,43 @@
     return /android/i.test(window.navigator.userAgent);
   }
 
+  function isChromeLike() {
+    const ua = window.navigator.userAgent;
+    return /Chrome|CriOS|EdgA/i.test(ua) && !/FBAN|FBAV|Instagram|Line|WhatsApp/i.test(ua);
+  }
+
+  function getCurrentHttpsUrl() {
+    const url = new URL(window.location.href);
+    url.hash = "";
+    return url.toString();
+  }
+
+  function getAndroidChromeIntentUrl() {
+    const currentUrl = new URL(getCurrentHttpsUrl());
+    const fallback = encodeURIComponent(currentUrl.toString());
+    return `intent://${currentUrl.host}${currentUrl.pathname}${currentUrl.search}#Intent;scheme=${currentUrl.protocol.replace(":", "")};package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
+  }
+
+  function openAndroidChromeShortcut() {
+    const message = "Abrindo no Chrome. Quando a pagina carregar, toque novamente em Instalar app.";
+    updateStatusText(message);
+    window.location.href = getAndroidChromeIntentUrl();
+  }
+
   function getInstallHelpText() {
     if (isStandalone()) return "App ja instalado neste dispositivo.";
     if (deferredInstallPrompt) return "Toque em Instalar app para adicionar este app ao celular.";
+    if (isAndroid() && !isChromeLike()) return "Toque para abrir no Chrome e concluir a instalacao.";
+    if (isAndroid()) return "Se a janela de instalacao nao abrir, use o menu do Chrome e escolha Instalar app.";
     if (isIos()) return "No iPhone: toque em Compartilhar e escolha Adicionar a Tela de Inicio.";
-    if (isAndroid()) return "No Android: abra o menu do navegador e escolha Instalar app ou Adicionar a tela inicial.";
     return "Para instalar, use o menu do navegador e escolha Instalar app ou Adicionar a tela inicial.";
+  }
+
+  function getInstallButtonText() {
+    if (deferredInstallPrompt) return "Instalar app neste dispositivo";
+    if (isAndroid() && !isChromeLike()) return "Abrir no Chrome para instalar";
+    if (isAndroid()) return "Instalar app";
+    return "Como instalar o app";
   }
 
   function collectInstallButtons() {
@@ -56,7 +87,7 @@
     installButtons.forEach((button) => {
       button.classList.toggle("hidden", installed);
       button.disabled = false;
-      button.textContent = deferredInstallPrompt ? "Instalar app neste dispositivo" : "Como instalar o app";
+      button.textContent = getInstallButtonText();
       button.title = helpText;
       button.setAttribute("aria-label", helpText);
     });
@@ -70,19 +101,24 @@
       return;
     }
 
-    if (!deferredInstallPrompt) {
-      const helpText = getInstallHelpText();
-      updateStatusText(helpText);
-      alert(helpText);
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice.catch(() => null);
+      if (choice?.outcome === "accepted") updateStatusText("App instalado neste dispositivo.");
+      else updateStatusText("Instalacao cancelada. Voce pode tentar novamente pelo botao Instalar.");
+      deferredInstallPrompt = null;
+      updateInstallButtons();
       return;
     }
 
-    deferredInstallPrompt.prompt();
-    const choice = await deferredInstallPrompt.userChoice.catch(() => null);
-    if (choice?.outcome === "accepted") updateStatusText("App instalado neste dispositivo.");
-    else updateStatusText("Instalacao cancelada. Voce pode tentar novamente pelo botao Instalar.");
-    deferredInstallPrompt = null;
-    updateInstallButtons();
+    if (isAndroid() && !isChromeLike()) {
+      openAndroidChromeShortcut();
+      return;
+    }
+
+    const helpText = getInstallHelpText();
+    updateStatusText(helpText);
+    alert(helpText);
   }
 
   window.addEventListener("beforeinstallprompt", (event) => {

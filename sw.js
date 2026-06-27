@@ -2,7 +2,7 @@
 // A linha __APP_VERSION__ eh reescrita automaticamente pelo GitHub Actions
 // no momento do deploy (vira o SHA do commit). Cada deploy = novo cache.
 const appVersion = ["127.0.0.1", "localhost"].includes(self.location.hostname)
-  ? "local-1.8.5"
+  ? "local-1.8.6"
   : "__APP_VERSION__";
 const cachePrefix = "gestao-locacoes-";
 const cacheName = `gestao-locacoes-${appVersion}`;
@@ -113,4 +113,5 @@ self.addEventListener("fetch", (event) => {
     }),
   );
 });
+
 
