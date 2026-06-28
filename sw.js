@@ -1,9 +1,7 @@
 ﻿// Rio dos Passos PWA - service worker
 // A linha __APP_VERSION__ eh reescrita automaticamente pelo GitHub Actions
 // no momento do deploy (vira o SHA do commit). Cada deploy = novo cache.
-const appVersion = ["127.0.0.1", "localhost"].includes(self.location.hostname)
-  ? "local-1.8.6"
-  : "__APP_VERSION__";
+const appVersion = "local-1.8.7";
 const cachePrefix = "gestao-locacoes-";
 const cacheName = `gestao-locacoes-${appVersion}`;
 const staticFiles = [
@@ -11,6 +9,8 @@ const staticFiles = [
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./supabase-sync.js",
+  "./update-checker.js",
   "./manifest.webmanifest",
   "./icon.svg",
   "./icon-192.png",

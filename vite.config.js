@@ -23,7 +23,7 @@ const requiredStaticFiles = [
 
 const optionalStaticFiles = [
   'rio-passos-atualizacao.zip',
-  'rio-passos-atualizacao-local-1.8.4.zip',
+  'rio-passos-atualizacao-local-1.8.7.zip',
   'Rio-Passos-Icone-Atalho.ico',
   'Rio-Passos-Icone-Atalho.png',
   'rio-passos-atalho.ico',

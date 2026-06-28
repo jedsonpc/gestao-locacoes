@@ -56,22 +56,23 @@
   function openAndroidChromeShortcut() {
     const message = "Abrindo no Chrome. Quando a pagina carregar, toque novamente em Instalar app.";
     updateStatusText(message);
-    window.location.href = getAndroidChromeIntentUrl();
+    const intentUrl = getAndroidChromeIntentUrl();
+    const openedWindow = window.open(intentUrl, "_blank");
+    if (!openedWindow) window.location.href = intentUrl;
   }
 
   function getInstallHelpText() {
     if (isStandalone()) return "App ja instalado neste dispositivo.";
     if (deferredInstallPrompt) return "Toque em Instalar app para adicionar este app ao celular.";
     if (isAndroid() && !isChromeLike()) return "Toque para abrir no Chrome e concluir a instalacao.";
-    if (isAndroid()) return "Se a janela de instalacao nao abrir, use o menu do Chrome e escolha Instalar app.";
+    if (isAndroid()) return "Toque para abrir no Chrome. Se a janela de instalacao nao aparecer, use o menu do Chrome e escolha Instalar app.";
     if (isIos()) return "No iPhone: toque em Compartilhar e escolha Adicionar a Tela de Inicio.";
     return "Para instalar, use o menu do navegador e escolha Instalar app ou Adicionar a tela inicial.";
   }
 
   function getInstallButtonText() {
     if (deferredInstallPrompt) return "Instalar app neste dispositivo";
-    if (isAndroid() && !isChromeLike()) return "Abrir no Chrome para instalar";
-    if (isAndroid()) return "Instalar app";
+    if (isAndroid()) return "Abrir no Chrome para instalar";
     return "Como instalar o app";
   }
 
@@ -111,7 +112,7 @@
       return;
     }
 
-    if (isAndroid() && !isChromeLike()) {
+    if (isAndroid()) {
       openAndroidChromeShortcut();
       return;
     }
