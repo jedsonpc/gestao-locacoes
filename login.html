@@ -36,6 +36,29 @@
     const offlineUserKey = "gestao-locacoes-last-online-user-v1";
     const sessionKey = "gestao-locacoes-session-v1";
     const sessionUserKey = "gestao-locacoes-session-user-v1";
+    const backupKey = "gestao-locacoes-backups-v1";
+
+    function freeLocalStorageSpace() {
+      try {
+        const storedBackups = JSON.parse(localStorage.getItem(backupKey) || "{}");
+        const items = Array.isArray(storedBackups.items) ? storedBackups.items : [];
+        if (items.length) {
+          const manual = items.filter((item) => item.reason === "manual").slice(0, 1);
+          const latest = items.slice(0, 1);
+          const reduced = [...manual, ...latest].filter((item, index, list) => item?.id && list.findIndex((other) => other.id === item.id) === index);
+          localStorage.setItem(backupKey, JSON.stringify({ items: reduced }));
+        }
+      } catch {
+        localStorage.removeItem(backupKey);
+      }
+      ["gestao-supabase-cache-v1", "gestao-supabase-pending-v1"].forEach((key) => {
+        try {
+          localStorage.removeItem(key);
+        } catch {
+          console.warn("Nao foi possivel liberar cache local:", key);
+        }
+      });
+    }
 
     function getCachedOfflineUser() {
       try {
@@ -47,13 +70,19 @@
 
     function cacheOfflineUser(user) {
       if (!user?.id && !user?.email) return;
-      localStorage.setItem(offlineUserKey, JSON.stringify({
-        id: user.id || user.email,
-        email: user.email || "",
-        username: user.email || "usuario@offline",
-        role: "admin",
-        cachedAt: new Date().toISOString(),
-      }));
+      const payload = JSON.stringify({
+          id: user.id || user.email,
+          email: user.email || "",
+          username: user.email || "usuario@offline",
+          role: "admin",
+          cachedAt: new Date().toISOString(),
+        });
+      try {
+        localStorage.setItem(offlineUserKey, payload);
+      } catch {
+        freeLocalStorageSpace();
+        localStorage.setItem(offlineUserKey, payload);
+      }
     }
 
     function enterOffline(user) {
@@ -101,6 +130,7 @@
       err.style.display = "none";
       btn.disabled = true; btn.textContent = "Entrando...";
       try {
+        freeLocalStorageSpace();
         if (!window.SupabaseSync) {
           const cachedUser = getCachedOfflineUser();
           const email = document.getElementById("email").value.trim();

@@ -22,18 +22,60 @@
     return;
   }
 
+  const CACHE_KEY = "gestao-supabase-cache-v1";
+  const META_KEY = "gestao-supabase-meta-v1";
+  const PENDING_KEY = "gestao-supabase-pending-v1";
+  const OFFLINE_USER_KEY = "gestao-locacoes-last-online-user-v1";
+  const BACKUP_KEY = "gestao-locacoes-backups-v1";
+
+  function freeLocalStorageSpace() {
+    try {
+      const storedBackups = JSON.parse(window.localStorage.getItem(BACKUP_KEY) || "{}");
+      const items = Array.isArray(storedBackups.items) ? storedBackups.items : [];
+      if (items.length) {
+        const manual = items.filter((item) => item.reason === "manual").slice(0, 1);
+        const latest = items.slice(0, 1);
+        const reduced = [...manual, ...latest].filter((item, index, list) => item?.id && list.findIndex((other) => other.id === item.id) === index);
+        window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ items: reduced }));
+      }
+    } catch {
+      window.localStorage.removeItem(BACKUP_KEY);
+    }
+
+    [CACHE_KEY, PENDING_KEY].forEach((key) => {
+      try {
+        window.localStorage.removeItem(key);
+      } catch {
+        console.warn("[Supabase] Nao foi possivel limpar cache local:", key);
+      }
+    });
+  }
+
+  const authStorage = {
+    getItem: (key) => window.localStorage.getItem(key),
+    removeItem: (key) => window.localStorage.removeItem(key),
+    setItem: (key, value) => {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch (error) {
+        freeLocalStorageSpace();
+        try {
+          window.localStorage.setItem(key, value);
+        } catch {
+          throw error;
+        }
+      }
+    },
+  };
+
   const client = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
-      storage: window.localStorage,
+      storage: authStorage,
     },
   });
-  const CACHE_KEY = "gestao-supabase-cache-v1";
-  const META_KEY = "gestao-supabase-meta-v1";
-  const PENDING_KEY = "gestao-supabase-pending-v1";
-  const OFFLINE_USER_KEY = "gestao-locacoes-last-online-user-v1";
   let saveTimer = null;
   let flushingPending = false;
   let lastLocalUpdate = 0;
@@ -71,10 +113,20 @@
   }
 
   async function signIn(email, password) {
-    const { data, error } = await withTimeout(
+    freeLocalStorageSpace();
+    let { data, error } = await withTimeout(
       client.auth.signInWithPassword({ email, password }),
       "Tempo esgotado ao tentar entrar. Verifique a internet e tente novamente."
     );
+    if (error && /quota|storage|setItem/i.test(error.message || "")) {
+      freeLocalStorageSpace();
+      const retry = await withTimeout(
+        client.auth.signInWithPassword({ email, password }),
+        "Tempo esgotado ao tentar entrar. Verifique a internet e tente novamente."
+      );
+      data = retry.data;
+      error = retry.error;
+    }
     if (error) throw error;
     cacheCurrentUser(data.user);
     return data.user;

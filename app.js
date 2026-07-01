@@ -11,11 +11,11 @@ const backupKey = "gestao-locacoes-backups-v1";
 const backupDirectoryDbName = "gestao-locacoes-backup-folder-v1";
 const backupDirectoryStoreName = "handles";
 const backupDirectoryHandleKey = "app-backup-folder";
-const backupMaxItems = 25;
+const backupMaxItems = 5;
 const preferredBackupFolderLabel = "D:\\App\\backups";
 const companyName = "Imobiliaria Rio dos Passos Ltda";
-const appVersion = "local-1.9.6";
-const appDeployedAt = "2026-07-01T18:03:31-03:00";
+const appVersion = "local-1.9.7";
+const appDeployedAt = "2026-07-01T20:18:55-03:00";
 const updatePackageFileName = "rio-dos-passos-atualizacao.zip";
 const updatePackageManifestFileName = "update-package.json";
 const appStorage = createSafeStorage("app");
@@ -268,7 +268,12 @@ function loadState() {
 }
 
 function saveLocalState(nextState = state) {
-  appStorage.setItem(storageKey, JSON.stringify(nextState));
+  try {
+    appStorage.setItem(storageKey, JSON.stringify(nextState));
+  } catch (error) {
+    freeStorageForAuth();
+    appStorage.setItem(storageKey, JSON.stringify(nextState));
+  }
 }
 
 function saveState() {
@@ -327,6 +332,26 @@ function saveBackups(items) {
   appStorage.setItem(backupKey, JSON.stringify({ items: items.slice(0, backupMaxItems) }));
 }
 
+function freeStorageForAuth() {
+  try {
+    const backups = loadBackups();
+    if (backups.length) {
+      const manual = backups.filter((item) => item.reason === "manual").slice(0, 1);
+      const latest = backups.slice(0, 1);
+      saveBackups([...manual, ...latest].filter((item, index, list) => item?.id && list.findIndex((other) => other.id === item.id) === index));
+    }
+  } catch {
+    appStorage.removeItem(backupKey);
+  }
+  ["gestao-supabase-cache-v1", "gestao-supabase-pending-v1"].forEach((key) => {
+    try {
+      appStorage.removeItem(key);
+    } catch {
+      console.warn("Nao foi possivel liberar cache local:", key);
+    }
+  });
+}
+
 function getBackupReasonLabel(reason) {
   const labels = {
     auto_save: "Automatico",
@@ -380,7 +405,7 @@ function createLocalBackup(reason = "auto_save", sourceState = state, options = 
   try {
     saveBackups(nextItems);
   } catch (error) {
-    const trimmed = nextItems.slice(0, Math.max(5, backupMaxItems - 10));
+    const trimmed = nextItems.slice(0, 1);
     try {
       saveBackups(trimmed);
     } catch (retryError) {
@@ -4761,6 +4786,7 @@ function exportFinancialErpCsv() {
     "text/csv;charset=utf-8",
   );
 }
+
 
 
 
