@@ -1,4 +1,4 @@
-﻿Rio Passos - Atualizacao local-1.9.0
+﻿Rio dos Passos - Atualizacao local-1.9.0
 
 Arquivos alterados nesta versao:
 - update-checker.js
@@ -16,7 +16,7 @@ Correcoes:
 - Versionamento e cache atualizados para local-1.9.0, evitando levar arquivos antigos para outra maquina.
 
 Como atualizar outra maquina:
-1. Leve o arquivo rio-passos-atualizacao-local-1.9.0.zip ou rio-passos-atualizacao.zip.
+1. Leve o arquivo rio-dos-passos-atualizacao-local-1.9.0.zip ou rio-dos-passos-atualizacao.zip.
 2. Na outra maquina, feche o app/navegador.
 3. Extraia o ZIP em uma pasta temporaria.
 4. Copie os arquivos extraidos para a pasta onde o app antigo esta instalado/publicado.

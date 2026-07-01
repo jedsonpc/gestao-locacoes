@@ -1,4 +1,4 @@
-{
+﻿{
   "headers": [
     {
       "source": "/sw.js",
@@ -10,7 +10,7 @@
       ]
     },
     {
-      "source": "/(rio-passos-atualizacao.*\\.zip|update-package\\.json|version\\.json)",
+      "source": "/(rio-dos-passos-atualizacao.*\\.zip|update-package\\.json|version\\.json)",
       "headers": [
         {
           "key": "Cache-Control",

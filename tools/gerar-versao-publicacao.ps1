@@ -9,7 +9,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $versionPath = Join-Path $root "version.json"
 $packagePath = Join-Path $root "update-package.json"
 $publicDir = Join-Path $root "publicacao-github-pages"
-$zipName = "rio-passos-atualizacao.zip"
+$zipName = "rio-dos-passos-atualizacao.zip"
 $createdAt = (Get-Date).ToString("yyyy-MM-ddTHH:mm:sszzz")
 
 if (-not $Version) {
@@ -32,7 +32,7 @@ $metadata | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $versionPath -Enc
 $updatePackage = [ordered]@{
   fileName = $zipName
   version = $Version
-  versionedFileName = "rio-passos-atualizacao-$Version.zip"
+  versionedFileName = "rio-dos-passos-atualizacao-$Version.zip"
   commit = "local"
   createdAt = $createdAt
 }
@@ -105,7 +105,7 @@ foreach ($name in $publishFiles) {
 
 if (-not $SkipZip) {
   $zipPath = Join-Path $root $zipName
-  $versionedZipPath = Join-Path $root "rio-passos-atualizacao-$Version.zip"
+  $versionedZipPath = Join-Path $root "rio-dos-passos-atualizacao-$Version.zip"
   if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
   if (Test-Path -LiteralPath $versionedZipPath) { Remove-Item -LiteralPath $versionedZipPath -Force }
   Compress-Archive -Path (Join-Path $publicDir "*") -DestinationPath $zipPath -Force

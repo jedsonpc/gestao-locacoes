@@ -1,7 +1,7 @@
 ﻿// Rio dos Passos PWA - service worker
 // A linha __APP_VERSION__ eh reescrita automaticamente pelo GitHub Actions
 // no momento do deploy (vira o SHA do commit). Cada deploy = novo cache.
-const appVersion = "local-1.9.0";
+const appVersion = "local-1.9.1";
 const cachePrefix = "gestao-locacoes-";
 const cacheName = `gestao-locacoes-${appVersion}`;
 const staticFiles = [
@@ -22,7 +22,7 @@ const offlineHtml = `<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Rio Passos offline</title>
+  <title>Rio dos Passos offline</title>
   <style>
     body{margin:0;font-family:Arial,sans-serif;background:#f5f7f8;color:#1f2933;display:grid;min-height:100vh;place-items:center;padding:24px}
     main{max-width:520px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.08);padding:28px}
@@ -113,6 +113,7 @@ self.addEventListener("fetch", (event) => {
     }),
   );
 });
+
 
 
 

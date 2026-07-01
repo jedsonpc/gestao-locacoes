@@ -1,8 +1,8 @@
-$ErrorActionPreference = "SilentlyContinue"
+﻿$ErrorActionPreference = "SilentlyContinue"
 
 $packageRoot = Split-Path -Parent $PSScriptRoot
 $portableApp = Join-Path $packageRoot "app"
-$installedApp = Join-Path $env:LOCALAPPDATA "RioPassosApp\app"
+$installedApp = Join-Path $env:LOCALAPPDATA "RioDosPassosApp\app"
 $appDir = if (Test-Path (Join-Path $installedApp "index.html")) { $installedApp } else { $portableApp }
 $indexFile = Join-Path $appDir "index.html"
 $url = "http://127.0.0.1:4173/?v=1.7.1"

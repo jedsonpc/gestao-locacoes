@@ -1,4 +1,4 @@
-import { copyFile, mkdir, stat } from "node:fs/promises";
+﻿import { copyFile, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -23,14 +23,14 @@ const requiredFiles = [
 ];
 
 const optionalFiles = [
-  "rio-passos-atualizacao.zip",
-  "rio-passos-atualizacao-local-1.8.4.zip",
-  "Rio-Passos-Icone-Atalho.ico",
-  "Rio-Passos-Icone-Atalho.png",
-  "rio-passos-atalho.ico",
-  "rio-passos-atalho.png",
-  "Abrir Rio Passos no Navegador.url",
-  "abrir-rio-passos-navegador.bat",
+  "rio-dos-passos-atualizacao.zip",
+  "rio-dos-passos-atualizacao-local-1.8.4.zip",
+  "Rio-dos-Passos-Icone-Atalho.ico",
+  "Rio-dos-Passos-Icone-Atalho.png",
+  "rio-dos-passos-atalho.ico",
+  "rio-dos-passos-atalho.png",
+  "Abrir Rio dos Passos no Navegador.url",
+  "abrir-rio-dos-passos-navegador.bat",
   "instalar-atalho-windows.bat",
   "INSTALAR-ANDROID-IOS.md",
   "LEIA-ME-INSTALACAO.txt",

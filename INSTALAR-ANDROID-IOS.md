@@ -8,7 +8,7 @@ Este app ja esta preparado como PWA. Para instalar em celulares, publique a past
 2. Se aparecer o botao de instalacao dentro do app, toque nele.
 3. Se o Chrome nao mostrar a janela de instalacao, toque no menu de tres pontos.
 4. Toque em Instalar app ou Adicionar a tela inicial.
-5. Confirme o nome Rio Passos.
+5. Confirme o nome Rio dos Passos.
 
 Importante: quando o app ja esta aberto no Chrome, o botao nao deve abrir outra aba. Se o Chrome nao liberar a instalacao automatica, use o menu do proprio Chrome.
 
@@ -17,7 +17,7 @@ Importante: quando o app ja esta aberto no Chrome, o botao nao deve abrir outra 
 1. Abra o endereco HTTPS do app no Safari.
 2. Toque no botao de compartilhar.
 3. Toque em Adicionar a Tela de Inicio.
-4. Confirme o nome Rio Passos.
+4. Confirme o nome Rio dos Passos.
 
 ## Observacao sobre APK e IPA
 

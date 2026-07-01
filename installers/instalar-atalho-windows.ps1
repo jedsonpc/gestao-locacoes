@@ -1,11 +1,11 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $packageRoot = Split-Path -Parent $PSScriptRoot
 $sourceApp = Join-Path $packageRoot "app"
-$installRoot = Join-Path $env:LOCALAPPDATA "RioPassosApp"
+$installRoot = Join-Path $env:LOCALAPPDATA "RioDosPassosApp"
 $installApp = Join-Path $installRoot "app"
-$startScript = Join-Path $installRoot "iniciar-rio-passos.ps1"
-$iconFile = Join-Path $installApp "rio-passos-atalho.ico"
+$startScript = Join-Path $installRoot "iniciar-rio-dos-passos.ps1"
+$iconFile = Join-Path $installApp "rio-dos-passos-atalho.ico"
 
 if (!(Test-Path $sourceApp)) {
   throw "Pasta do app nao encontrada: $sourceApp"
@@ -25,7 +25,7 @@ $ErrorActionPreference = "SilentlyContinue"
 $AppDir = Join-Path $PSScriptRoot "app"
 $IndexFile = Join-Path $AppDir "index.html"
 $Url = "http://127.0.0.1:4173/?v=1.7.1"
-$PidFile = Join-Path $PSScriptRoot "rio-passos-server.pid"
+$PidFile = Join-Path $PSScriptRoot "rio-dos-passos-server.pid"
 
 function Open-Browser($target) {
   $edge = Get-Command "msedge.exe" -ErrorAction SilentlyContinue
@@ -54,7 +54,7 @@ function Test-LocalServer {
 }
 
 if (!(Test-Path $IndexFile)) {
-  [System.Windows.Forms.MessageBox]::Show("Arquivo index.html nao encontrado em $AppDir", "Rio Passos")
+  [System.Windows.Forms.MessageBox]::Show("Arquivo index.html nao encontrado em $AppDir", "Rio dos Passos")
   exit 1
 }
 
@@ -87,9 +87,9 @@ if (Test-LocalServer) {
 
 $desktop = [Environment]::GetFolderPath("Desktop")
 $programs = [Environment]::GetFolderPath("Programs")
-$shortcutName = "Rio Passos.lnk"
+$shortcutName = "Rio dos Passos.lnk"
 $desktopShortcut = Join-Path $desktop $shortcutName
-$startMenuDir = Join-Path $programs "Rio Passos"
+$startMenuDir = Join-Path $programs "Rio dos Passos"
 $startMenuShortcut = Join-Path $startMenuDir $shortcutName
 
 New-Item -ItemType Directory -Force -Path $startMenuDir | Out-Null
@@ -102,7 +102,7 @@ foreach ($shortcutPath in @($desktopShortcut, $startMenuShortcut)) {
   $shortcut.TargetPath = $powershell
   $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$startScript`""
   $shortcut.WorkingDirectory = $installRoot
-  $shortcut.Description = "Abrir Rio Passos"
+  $shortcut.Description = "Abrir Rio dos Passos"
   if (Test-Path $iconFile) {
     $shortcut.IconLocation = $iconFile
   }
@@ -111,5 +111,5 @@ foreach ($shortcutPath in @($desktopShortcut, $startMenuShortcut)) {
 
 Write-Host ""
 Write-Host "Instalacao concluida."
-Write-Host "Atalho criado na Area de Trabalho e no Menu Iniciar: Rio Passos"
+Write-Host "Atalho criado na Area de Trabalho e no Menu Iniciar: Rio dos Passos"
 Write-Host "Arquivos instalados em: $installRoot"

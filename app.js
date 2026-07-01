@@ -13,9 +13,9 @@ const backupDirectoryHandleKey = "app-backup-folder";
 const backupMaxItems = 25;
 const preferredBackupFolderLabel = "D:\\App\\backups";
 const companyName = "Imobiliaria Rio dos Passos Ltda";
-const appVersion = "local-1.9.0";
-const appDeployedAt = "2026-07-01T11:00:57-03:00";
-const updatePackageFileName = "rio-passos-atualizacao.zip";
+const appVersion = "local-1.9.1";
+const appDeployedAt = "2026-07-01T12:17:00-03:00";
+const updatePackageFileName = "rio-dos-passos-atualizacao.zip";
 const updatePackageManifestFileName = "update-package.json";
 const appStorage = createSafeStorage("app");
 const appSessionStorage = createSafeStorage("session");
@@ -292,7 +292,7 @@ function getBackupReasonLabel(reason) {
 }
 
 function createBackupFileName(createdAt = new Date().toISOString()) {
-  return `rio-passos-backup-${createdAt.replace(/[:.]/g, "-")}.json`;
+  return `rio-dos-passos-backup-${createdAt.replace(/[:.]/g, "-")}.json`;
 }
 
 function createBackupEnvelope(reason, sourceState = state) {
@@ -403,7 +403,7 @@ async function chooseBackupFolder() {
     return;
   }
   try {
-    const handle = await window.showDirectoryPicker({ id: "rio-passos-backups", mode: "readwrite" });
+    const handle = await window.showDirectoryPicker({ id: "rio-dos-passos-backups", mode: "readwrite" });
     if (!(await ensureBackupDirectoryPermission(handle))) {
       setText("backup-message", "Permissao de escrita nao concedida para a pasta escolhida.");
       return;
@@ -4667,6 +4667,7 @@ function exportFinancialErpCsv() {
     "text/csv;charset=utf-8",
   );
 }
+
 
 
 

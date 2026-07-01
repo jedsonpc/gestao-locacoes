@@ -1,4 +1,4 @@
-# Logs
+﻿# Logs
 logs
 *.log
 npm-debug.log*
@@ -19,8 +19,8 @@ supabase/.temp/
 # Local/generated app copies and backups
 app/
 publicacao-github-pages/
-Rio-Passos-App-PWA-para-publicar/
-Rio-Passos-Instalador-Completo/
+Rio-dos-Passos-App-PWA-para-publicar/
+Rio-dos-Passos-Instalador-Completo/
 backup-codex-*/
 backups/
 anterior/

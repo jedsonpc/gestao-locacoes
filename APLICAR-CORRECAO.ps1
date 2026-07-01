@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $source = Split-Path -Parent $MyInvocation.MyCommand.Path
 $appRoot = "C:\App Imobiliaria"
@@ -15,10 +15,10 @@ $files = @(
   "login.html",
   "styles.css",
   "supabase-sync.js",
-  "Rio-Passos-Instalador-Completo\app\app.js",
-  "Rio-Passos-Instalador-Completo\app\login.html",
-  "Rio-Passos-Instalador-Completo\app\styles.css",
-  "Rio-Passos-Instalador-Completo\app\supabase-sync.js"
+  "Rio-dos-Passos-Instalador-Completo\app\app.js",
+  "Rio-dos-Passos-Instalador-Completo\app\login.html",
+  "Rio-dos-Passos-Instalador-Completo\app\styles.css",
+  "Rio-dos-Passos-Instalador-Completo\app\supabase-sync.js"
 )
 
 foreach ($file in $files) {
