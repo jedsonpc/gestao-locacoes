@@ -7,7 +7,6 @@
   let currentVersion = null;
   let waitingWorker = null;
   let registrationPromise = null;
-  let deferredInstallPrompt = null;
   let installButtons = [];
 
   function isAutoUpdateEnabled() {
@@ -24,57 +23,16 @@
     if (status) status.textContent = text;
   }
 
-  function isStandalone() {
-    return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
-  }
-
-  function isIos() {
-    return /iphone|ipad|ipod/i.test(window.navigator.userAgent) && !window.MSStream;
-  }
-
-  function isAndroid() {
-    return /android/i.test(window.navigator.userAgent);
-  }
-
-  function isChromeLike() {
-    const ua = window.navigator.userAgent;
-    return /Chrome|CriOS|EdgA/i.test(ua) && !/FBAN|FBAV|Instagram|Line|WhatsApp/i.test(ua);
-  }
-
-  function getCurrentHttpsUrl() {
-    const url = new URL(window.location.href);
-    url.hash = "";
-    return url.toString();
-  }
-
-  function getAndroidChromeIntentUrl() {
-    const currentUrl = new URL(getCurrentHttpsUrl());
-    const fallback = encodeURIComponent(currentUrl.toString());
-    return `intent://${currentUrl.host}${currentUrl.pathname}${currentUrl.search}#Intent;scheme=${currentUrl.protocol.replace(":", "")};package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
-  }
-
-  function openAndroidChromeShortcut() {
-    const message = "Abrindo no Chrome. Quando a pagina carregar, toque novamente em Instalar app.";
-    updateStatusText(message);
-    const intentUrl = getAndroidChromeIntentUrl();
-    const openedWindow = window.open(intentUrl, "_blank");
-    if (!openedWindow) window.location.href = intentUrl;
-  }
-
-  function getInstallHelpText() {
-    if (isStandalone()) return "App ja instalado neste dispositivo.";
-    if (deferredInstallPrompt) return "Toque em Instalar app para adicionar este app ao celular.";
-    if (isAndroid() && !isChromeLike()) return "Toque para abrir no Chrome e concluir a instalacao.";
-    if (isAndroid()) return "No Chrome, toque no menu de tres pontos e escolha Instalar app ou Adicionar a tela inicial.";
-    if (isIos()) return "No iPhone: toque em Compartilhar e escolha Adicionar a Tela de Inicio.";
-    return "Para instalar, use o menu do navegador e escolha Instalar app ou Adicionar a tela inicial.";
+  function getQrCodePageUrl() {
+    return new URL("./instalar-celular.html", window.location.href).toString();
   }
 
   function getInstallButtonText() {
-    if (deferredInstallPrompt) return "Instalar app neste dispositivo";
-    if (isAndroid() && !isChromeLike()) return "Abrir no Chrome para instalar";
-    if (isAndroid()) return "Instalar pelo menu do Chrome";
-    return "Instalar app";
+    return "Gerar QR Code para acesso ao sistema";
+  }
+
+  function getInstallHelpText() {
+    return "Abrir QR Code para compartilhar o acesso ao sistema.";
   }
 
   function collectInstallButtons() {
@@ -83,54 +41,32 @@
 
   function updateInstallButtons({ announce = false } = {}) {
     collectInstallButtons();
-    const installed = isStandalone();
     const helpText = getInstallHelpText();
 
     installButtons.forEach((button) => {
-      button.classList.toggle("hidden", installed);
+      button.classList.remove("hidden");
       button.disabled = false;
       button.textContent = getInstallButtonText();
       button.title = helpText;
       button.setAttribute("aria-label", helpText);
     });
 
-    if (announce && !installed) updateStatusText(helpText);
+    if (announce) updateStatusText(helpText);
   }
 
-  async function handleInstallClick() {
-    if (isStandalone()) {
-      updateStatusText("App ja instalado neste dispositivo.");
-      return;
-    }
-
-    if (deferredInstallPrompt) {
-      deferredInstallPrompt.prompt();
-      const choice = await deferredInstallPrompt.userChoice.catch(() => null);
-      if (choice?.outcome === "accepted") updateStatusText("App instalado neste dispositivo.");
-      else updateStatusText("Instalacao cancelada. Voce pode tentar novamente pelo botao Instalar.");
-      deferredInstallPrompt = null;
-      updateInstallButtons();
-      return;
-    }
-
-    if (isAndroid() && !isChromeLike()) {
-      openAndroidChromeShortcut();
-      return;
-    }
-
-    const helpText = getInstallHelpText();
-    updateStatusText(helpText);
-    alert(helpText);
+  function handleInstallClick() {
+    updateStatusText("Abrindo QR Code para compartilhar o acesso.");
+    const qrCodeUrl = getQrCodePageUrl();
+    const openedWindow = window.open(qrCodeUrl, "_blank", "noopener");
+    if (!openedWindow) window.location.href = qrCodeUrl;
   }
 
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
-    deferredInstallPrompt = event;
     updateInstallButtons({ announce: true });
   });
 
   window.addEventListener("appinstalled", () => {
-    deferredInstallPrompt = null;
     updateInstallButtons();
     updateStatusText("App instalado neste dispositivo.");
   });

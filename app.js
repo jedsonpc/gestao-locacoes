@@ -13,8 +13,8 @@ const backupDirectoryHandleKey = "app-backup-folder";
 const backupMaxItems = 25;
 const preferredBackupFolderLabel = "D:\\App\\backups";
 const companyName = "Imobiliaria Rio dos Passos Ltda";
-const appVersion = "local-1.9.4";
-const appDeployedAt = "2026-07-01T16:31:11-03:00";
+const appVersion = "local-1.9.5";
+const appDeployedAt = "2026-07-01T16:36:19-03:00";
 const updatePackageFileName = "rio-dos-passos-atualizacao.zip";
 const updatePackageManifestFileName = "update-package.json";
 const appStorage = createSafeStorage("app");
@@ -4667,6 +4667,7 @@ function exportFinancialErpCsv() {
     "text/csv;charset=utf-8",
   );
 }
+
 
 
 

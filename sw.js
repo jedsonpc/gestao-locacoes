@@ -1,7 +1,7 @@
 ﻿// Rio dos Passos PWA - service worker
 // A linha __APP_VERSION__ eh reescrita automaticamente pelo GitHub Actions
 // no momento do deploy (vira o SHA do commit). Cada deploy = novo cache.
-const appVersion = "local-1.9.4";
+const appVersion = "local-1.9.5";
 const cachePrefix = "gestao-locacoes-";
 const cacheName = `gestao-locacoes-${appVersion}`;
 const staticFiles = [
@@ -113,6 +113,7 @@ self.addEventListener("fetch", (event) => {
     }),
   );
 });
+
 
 
 
