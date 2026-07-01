@@ -58,7 +58,10 @@
     updateStatusText("Abrindo QR Code para compartilhar o acesso.");
     const qrCodeUrl = getQrCodePageUrl();
     const openedWindow = window.open(qrCodeUrl, "_blank", "noopener");
-    if (!openedWindow) window.location.href = qrCodeUrl;
+    if (!openedWindow) {
+      updateStatusText("O navegador bloqueou a nova aba. Copie o link do QR Code: " + qrCodeUrl);
+      alert("O navegador bloqueou a nova aba.\n\nCopie este link para abrir o QR Code:\n" + qrCodeUrl);
+    }
   }
 
   window.addEventListener("beforeinstallprompt", (event) => {
