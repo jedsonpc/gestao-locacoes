@@ -10,6 +10,10 @@ $versionPath = Join-Path $root "version.json"
 $packagePath = Join-Path $root "update-package.json"
 $publicDir = Join-Path $root "publicacao-github-pages"
 $zipName = "rio-dos-passos-atualizacao.zip"
+$pwaDir = Join-Path $root "Rio-dos-Passos-App-PWA-para-publicar"
+$installerDir = Join-Path $root "Rio-dos-Passos-Instalador-Completo"
+$pwaZipName = "Rio-dos-Passos-App-PWA-para-publicar.zip"
+$installerZipName = "Rio-dos-Passos-Instalador-Completo.zip"
 $createdAt = (Get-Date).ToString("yyyy-MM-ddTHH:mm:sszzz")
 
 if (-not $Version) {
@@ -106,10 +110,72 @@ foreach ($name in $publishFiles) {
 if (-not $SkipZip) {
   $zipPath = Join-Path $root $zipName
   $versionedZipPath = Join-Path $root "rio-dos-passos-atualizacao-$Version.zip"
+  $pwaZipPath = Join-Path $root $pwaZipName
+  $versionedPwaZipPath = Join-Path $root "Rio-dos-Passos-App-PWA-para-publicar-$Version.zip"
+  $installerZipPath = Join-Path $root $installerZipName
+  $versionedInstallerZipPath = Join-Path $root "Rio-dos-Passos-Instalador-Completo-$Version.zip"
+  $pwaTempZipPath = Join-Path $root "_tmp-pwa-publicacao.zip"
+  $installerTempZipPath = Join-Path $root "_tmp-instalador-completo.zip"
+
+  foreach ($dir in @($pwaDir, $installerDir)) {
+    if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  }
+
+  Copy-Item -Path (Join-Path $publicDir "*") -Destination $pwaDir -Recurse -Force
+
+  $installerAppDir = Join-Path $installerDir "app"
+  New-Item -ItemType Directory -Force -Path $installerAppDir | Out-Null
+  Copy-Item -Path (Join-Path $publicDir "*") -Destination $installerAppDir -Recurse -Force
+
+  $installerRootFiles = @(
+    "instalar-atalho-windows.bat",
+    "abrir-rio-dos-passos-navegador.bat",
+    "INSTALAR-ANDROID-IOS.md",
+    "LEIA-ME-PRIMEIRO.txt",
+    "LEIA-ME-INSTALACAO.txt",
+    "LEIA-ME-ATUALIZACAO.txt",
+    "LEIA-ME-ATUALIZAR-OUTRA-MAQUINA.txt"
+  )
+  foreach ($name in $installerRootFiles) {
+    $source = Join-Path $root $name
+    if (Test-Path -LiteralPath $source) {
+      Copy-Item -LiteralPath $source -Destination (Join-Path $installerDir $name) -Force
+    }
+  }
+
+  $installersSource = Join-Path $root "installers"
+  if (Test-Path -LiteralPath $installersSource) {
+    Copy-Item -LiteralPath $installersSource -Destination (Join-Path $installerDir "installers") -Recurse -Force
+  }
+
+  $readmePath = Join-Path $installerDir "LEIA-ME-PRIMEIRO.txt"
+  if (Test-Path -LiteralPath $readmePath) {
+    $readme = Get-Content -LiteralPath $readmePath -Raw -Encoding UTF8
+    $readme = $readme -replace 'Versao: [^\r\n]+', "Versao: $Version"
+    $readme = $readme -replace 'Gerado em: [^\r\n]+', "Gerado em: $createdAt"
+    Set-Content -LiteralPath $readmePath -Value $readme -Encoding UTF8
+  }
+
   if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
   if (Test-Path -LiteralPath $versionedZipPath) { Remove-Item -LiteralPath $versionedZipPath -Force }
+  if (Test-Path -LiteralPath $pwaZipPath) { Remove-Item -LiteralPath $pwaZipPath -Force }
+  if (Test-Path -LiteralPath $versionedPwaZipPath) { Remove-Item -LiteralPath $versionedPwaZipPath -Force }
+  if (Test-Path -LiteralPath $installerZipPath) { Remove-Item -LiteralPath $installerZipPath -Force }
+  if (Test-Path -LiteralPath $versionedInstallerZipPath) { Remove-Item -LiteralPath $versionedInstallerZipPath -Force }
+  if (Test-Path -LiteralPath $pwaTempZipPath) { Remove-Item -LiteralPath $pwaTempZipPath -Force }
+  if (Test-Path -LiteralPath $installerTempZipPath) { Remove-Item -LiteralPath $installerTempZipPath -Force }
+
   Compress-Archive -Path (Join-Path $publicDir "*") -DestinationPath $zipPath -Force
   Copy-Item -LiteralPath $zipPath -Destination $versionedZipPath -Force
+
+  Compress-Archive -Path (Join-Path $pwaDir "*") -DestinationPath $pwaTempZipPath -Force
+  Move-Item -LiteralPath $pwaTempZipPath -Destination $pwaZipPath -Force
+  Copy-Item -LiteralPath $pwaZipPath -Destination $versionedPwaZipPath -Force
+
+  Compress-Archive -Path (Join-Path $installerDir "*") -DestinationPath $installerTempZipPath -Force
+  Move-Item -LiteralPath $installerTempZipPath -Destination $installerZipPath -Force
+  Copy-Item -LiteralPath $installerZipPath -Destination $versionedInstallerZipPath -Force
 }
 
 Write-Host "Versao/publicacao preparada: $Version ($createdAt)"
