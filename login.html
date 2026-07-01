@@ -33,10 +33,51 @@
   <script src="supabase-config.js"></script>
   <script src="supabase-sync.js"></script>
   <script>
+    const offlineUserKey = "gestao-locacoes-last-online-user-v1";
+    const sessionKey = "gestao-locacoes-session-v1";
+    const sessionUserKey = "gestao-locacoes-session-user-v1";
+
+    function getCachedOfflineUser() {
+      try {
+        return JSON.parse(localStorage.getItem(offlineUserKey));
+      } catch {
+        return null;
+      }
+    }
+
+    function cacheOfflineUser(user) {
+      if (!user?.id && !user?.email) return;
+      localStorage.setItem(offlineUserKey, JSON.stringify({
+        id: user.id || user.email,
+        email: user.email || "",
+        username: user.email || "usuario@offline",
+        role: "admin",
+        cachedAt: new Date().toISOString(),
+      }));
+    }
+
+    function enterOffline(user) {
+      sessionStorage.setItem(sessionKey, "active");
+      sessionStorage.setItem(sessionUserKey, JSON.stringify({
+        id: user.id || user.email || "offline-user",
+        username: user.email || user.username || "usuario@offline",
+        role: user.role || "admin",
+        offline: true,
+      }));
+      location.replace("index.html");
+    }
+
     (async () => {
       const err = document.getElementById("err");
       const btn = document.getElementById("submit-btn");
       if (!window.SupabaseSync) {
+        const cachedUser = getCachedOfflineUser();
+        if (!navigator.onLine && cachedUser) {
+          err.textContent = "Modo offline ativo. Entre com o ultimo email validado neste dispositivo.";
+          err.style.display = "block";
+          btn.disabled = false;
+          return;
+        }
         err.textContent = "Nao foi possivel carregar a conexao online. Verifique a internet e recarregue.";
         err.style.display = "block";
         btn.disabled = true;
@@ -60,13 +101,22 @@
       err.style.display = "none";
       btn.disabled = true; btn.textContent = "Entrando...";
       try {
-        if (!window.SupabaseSync) throw new Error("Conexao online nao carregada. Verifique a internet e recarregue.");
+        if (!window.SupabaseSync) {
+          const cachedUser = getCachedOfflineUser();
+          const email = document.getElementById("email").value.trim();
+          if (!navigator.onLine && cachedUser && (!email || email.toLowerCase() === String(cachedUser.email || "").toLowerCase())) {
+            enterOffline(cachedUser);
+            return;
+          }
+          throw new Error("Conexao online nao carregada. Verifique a internet e recarregue.");
+        }
         const signedUser = await window.SupabaseSync.signIn(
           document.getElementById("email").value.trim(),
           document.getElementById("password").value
         );
         const user = signedUser || await window.SupabaseSync.getCurrentUser();
         if (!user) throw new Error("Login aceito, mas a sessao nao foi gravada no navegador. Recarregue e tente novamente.");
+        cacheOfflineUser(user);
         location.replace("index.html");
       } catch (e2) {
         err.textContent = "Falha no login: " + (e2.message || e2);

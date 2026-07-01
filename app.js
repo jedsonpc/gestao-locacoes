@@ -2,6 +2,7 @@
 const authKey = "gestao-locacoes-auth-v1";
 const sessionKey = "gestao-locacoes-session-v1";
 const sessionUserKey = "gestao-locacoes-session-user-v1";
+const offlineUserKey = "gestao-locacoes-last-online-user-v1";
 const reminderSessionKey = "gestao-locacoes-contract-reminder-v1";
 const chargeConfirmationReminderSessionKey = "gestao-locacoes-charge-confirmation-reminder-v1";
 const syncKey = "gestao-locacoes-sync-v1";
@@ -13,8 +14,8 @@ const backupDirectoryHandleKey = "app-backup-folder";
 const backupMaxItems = 25;
 const preferredBackupFolderLabel = "D:\\App\\backups";
 const companyName = "Imobiliaria Rio dos Passos Ltda";
-const appVersion = "local-1.9.5";
-const appDeployedAt = "2026-07-01T16:36:19-03:00";
+const appVersion = "local-1.9.6";
+const appDeployedAt = "2026-07-01T18:03:31-03:00";
 const updatePackageFileName = "rio-dos-passos-atualizacao.zip";
 const updatePackageManifestFileName = "update-package.json";
 const appStorage = createSafeStorage("app");
@@ -143,27 +144,75 @@ async function resolveSupabaseUser(retries = 5, delayMs = 250) {
   return null;
 }
 
+function cacheOfflineUser(user) {
+  if (!user?.id && !user?.email) return;
+  try {
+    appStorage.setItem(offlineUserKey, JSON.stringify({
+      id: user.id || user.email,
+      email: user.email || user.username || "",
+      username: user.email || user.username || "usuario@offline",
+      role: "admin",
+      cachedAt: new Date().toISOString(),
+    }));
+  } catch (error) {
+    console.warn("Nao foi possivel salvar usuario offline:", error);
+  }
+}
+
+function getCachedOfflineUser() {
+  try {
+    return JSON.parse(appStorage.getItem(offlineUserKey));
+  } catch {
+    return null;
+  }
+}
+
+function canUseCachedOfflineUser() {
+  return !navigator.onLine && Boolean(getCachedOfflineUser());
+}
+
+function activateOfflineSession(user = getCachedOfflineUser()) {
+  if (!user) return false;
+  appSessionStorage.setItem(sessionKey, "active");
+  appSessionStorage.setItem(sessionUserKey, JSON.stringify({
+    id: user.id || user.email || "offline-user",
+    username: user.email || user.username || "usuario@offline",
+    role: user.role || "admin",
+    offline: true,
+  }));
+  return true;
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
-  if (!window.SupabaseSync) {
+  if (!window.SupabaseSync && canUseCachedOfflineUser()) {
+    activateOfflineSession();
+  } else if (!window.SupabaseSync) {
     location.replace("login.html");
     return;
   }
 
-  const user = await resolveSupabaseUser();
+  const user = window.SupabaseSync ? await resolveSupabaseUser() : null;
   if (!user) {
-    location.replace("login.html");
-    return;
+    if (!activateOfflineSession()) {
+      location.replace("login.html");
+      return;
+    }
+  } else {
+    cacheOfflineUser(user);
+    activateSupabaseSession(user);
   }
-  activateSupabaseSession(user);
 
   try {
-    await reconcileCloudState();
-    await window.SupabaseSync.flushPendingState?.();
+    if (window.SupabaseSync && navigator.onLine) {
+      await reconcileCloudState();
+      await window.SupabaseSync.flushPendingState?.();
+    }
   } catch (error) {
     console.warn("Nao foi possivel sincronizar com a nuvem ao iniciar. Usando dados locais.", error);
   }
 
-  window.SupabaseSync.subscribeChanges((newData, remoteUpdatedAt) => {
+  window.SupabaseSync?.subscribeChanges((newData, remoteUpdatedAt) => {
+    if (!navigator.onLine) return;
     createLocalBackup("before_cloud_download", state, { force: true });
     state = sanitizeRemoteState(newData);
     saveLocalState(state);
@@ -178,6 +227,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindForms();
   bindUtilities();
   bindTableActions();
+  bindConnectivityRecovery();
   renderAll();
   loadAppVersionInfo();
 });
@@ -643,6 +693,34 @@ function bindNavigation() {
   if (initialView && document.getElementById(initialView)) activateView(initialView);
 }
 
+function bindConnectivityRecovery() {
+  window.addEventListener("online", async () => {
+    setText("sync-status", "Conexao restaurada. Reconectando...");
+    if (!window.SupabaseSync) {
+      setTimeout(() => location.reload(), 600);
+      return;
+    }
+    try {
+      const user = await resolveSupabaseUser(2, 200);
+      if (user) {
+        cacheOfflineUser(user);
+        activateSupabaseSession(user);
+      }
+      await window.SupabaseSync.flushPendingState?.();
+      await reconcileCloudState();
+      updateSyncStatus();
+      renderAll();
+    } catch (error) {
+      console.warn("Nao foi possivel sincronizar automaticamente ao voltar a internet:", error);
+      setText("sync-status", "Online, com sincronizacao pendente");
+    }
+  });
+
+  window.addEventListener("offline", () => {
+    setText("sync-status", "Offline - dados locais ativos");
+  });
+}
+
 function activateView(target, options = {}) {
   if (!canAccessView(target)) {
     if (options.showAccessAlert) alert("Seu perfil nao tem permissao para acessar esta area.");
@@ -928,9 +1006,20 @@ async function login(form) {
   const data = Object.fromEntries(new FormData(form).entries());
   try {
     const email = String(data.username || "").trim();
+    if (!window.SupabaseSync && canUseCachedOfflineUser()) {
+      const cachedUser = getCachedOfflineUser();
+      if (email && cachedUser.email && email.toLowerCase() !== cachedUser.email.toLowerCase()) {
+        throw new Error("Este dispositivo esta offline e so pode entrar com o ultimo usuario validado online.");
+      }
+      activateOfflineSession(cachedUser);
+      setText("login-message", "Entrada offline liberada. As alteracoes serao sincronizadas quando a internet voltar.");
+      renderAll();
+      return;
+    }
     await window.SupabaseSync.signIn(email, data.password || "");
     const user = await resolveSupabaseUser(3, 200);
     if (!user) throw new Error("Sessao Supabase nao retornada.");
+    cacheOfflineUser(user);
     activateSupabaseSession(user);
     addAuditLog("login_success", "auth", user.id, null, { username: user.email || email, role: "admin" }, false);
     form.reset();
@@ -957,6 +1046,7 @@ async function logout() {
 
 function activateSupabaseSession(user) {
   const email = user.email || "usuario@supabase";
+  cacheOfflineUser(user);
   appSessionStorage.setItem(sessionKey, "active");
   appSessionStorage.setItem(sessionUserKey, JSON.stringify({
     id: user.id,
@@ -1765,6 +1855,10 @@ function canDeleteRecordSafely(collection, id) {
 function updateSyncStatus() {
   const status = document.getElementById("sync-status");
   if (!status) return;
+  if (!navigator.onLine) {
+    status.textContent = "Offline - dados locais ativos";
+    return;
+  }
   if (window.SupabaseSync) {
     status.textContent = "Supabase conectado";
     return;
@@ -4667,6 +4761,7 @@ function exportFinancialErpCsv() {
     "text/csv;charset=utf-8",
   );
 }
+
 
 
 

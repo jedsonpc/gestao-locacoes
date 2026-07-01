@@ -1,14 +1,17 @@
 ﻿// Rio dos Passos PWA - service worker
 // A linha __APP_VERSION__ eh reescrita automaticamente pelo GitHub Actions
 // no momento do deploy (vira o SHA do commit). Cada deploy = novo cache.
-const appVersion = "local-1.9.5";
+const appVersion = "local-1.9.6";
 const cachePrefix = "gestao-locacoes-";
 const cacheName = `gestao-locacoes-${appVersion}`;
 const staticFiles = [
   "./",
   "./index.html",
+  "./login.html",
+  "./instalar-celular.html",
   "./styles.css",
   "./app.js",
+  "./supabase-config.js",
   "./supabase-sync.js",
   "./update-checker.js",
   "./manifest.webmanifest",
@@ -85,7 +88,8 @@ self.addEventListener("fetch", (event) => {
 
   if (isHtmlOrScript(event.request, url)) {
     event.respondWith(
-      fetch(event.request)
+      caches.match(event.request).then((cachedResponse) =>
+        fetch(event.request)
         .then((response) => {
           if (response && response.ok) {
             const copy = response.clone();
@@ -93,7 +97,8 @@ self.addEventListener("fetch", (event) => {
           }
           return response;
         })
-        .catch(() => caches.match(event.request).then((c) => c || caches.match("./index.html") || new Response(offlineHtml, { headers: { "Content-Type": "text/html; charset=utf-8" } }))),
+        .catch(() => cachedResponse || caches.match("./index.html") || new Response(offlineHtml, { headers: { "Content-Type": "text/html; charset=utf-8" } })),
+      ),
     );
     return;
   }
@@ -113,6 +118,7 @@ self.addEventListener("fetch", (event) => {
     }),
   );
 });
+
 
 
 

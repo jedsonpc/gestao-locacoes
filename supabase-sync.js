@@ -33,6 +33,7 @@
   const CACHE_KEY = "gestao-supabase-cache-v1";
   const META_KEY = "gestao-supabase-meta-v1";
   const PENDING_KEY = "gestao-supabase-pending-v1";
+  const OFFLINE_USER_KEY = "gestao-locacoes-last-online-user-v1";
   let saveTimer = null;
   let flushingPending = false;
   let lastLocalUpdate = 0;
@@ -45,12 +46,37 @@
     ]);
   }
 
+  function cacheCurrentUser(user) {
+    if (!user?.id && !user?.email) return;
+    try {
+      localStorage.setItem(OFFLINE_USER_KEY, JSON.stringify({
+        id: user.id || user.email,
+        email: user.email || "",
+        username: user.email || "usuario@offline",
+        role: "admin",
+        cachedAt: new Date().toISOString(),
+      }));
+    } catch {
+      console.warn("[Supabase] Nao foi possivel salvar usuario para modo offline.");
+    }
+  }
+
+  function getCachedUser() {
+    try {
+      const cached = localStorage.getItem(OFFLINE_USER_KEY);
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  }
+
   async function signIn(email, password) {
     const { data, error } = await withTimeout(
       client.auth.signInWithPassword({ email, password }),
       "Tempo esgotado ao tentar entrar. Verifique a internet e tente novamente."
     );
     if (error) throw error;
+    cacheCurrentUser(data.user);
     return data.user;
   }
 
@@ -65,7 +91,10 @@
         "Tempo esgotado ao verificar sessao local.",
         8000
       );
-      if (sessionData?.session?.user) return sessionData.session.user;
+      if (sessionData?.session?.user) {
+        cacheCurrentUser(sessionData.session.user);
+        return sessionData.session.user;
+      }
       if (sessionError) console.warn("[Supabase] Sessao local nao encontrada:", sessionError);
 
       const { data, error } = await withTimeout(
@@ -77,9 +106,11 @@
         console.warn("[Supabase] Usuario atual nao encontrado:", error);
         return null;
       }
+      if (data.user) cacheCurrentUser(data.user);
       return data.user || null;
     } catch (error) {
       console.warn("[Supabase] Nao foi possivel verificar o usuario atual:", error);
+      if (!navigator.onLine) return getCachedUser();
       return null;
     }
   }
@@ -395,6 +426,7 @@
     signIn,
     signOut,
     getCurrentUser,
+    getCachedUser,
     loadRemoteState,
     saveRemoteState,
     saveRemoteStateNow,
