@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Instalar Rio Passos no celular</title>
+  <style>
+    :root {
+      --bg: #f5f7f8;
+      --surface: #ffffff;
+      --text: #1d2528;
+      --muted: #667275;
+      --line: #d9e0e2;
+      --primary: #5c171b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      display: grid;
+      font-family: Arial, Helvetica, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      padding: 22px;
+      place-items: center;
+    }
+
+    main {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(24, 45, 48, 0.08);
+      max-width: 560px;
+      padding: 24px;
+      text-align: center;
+      width: 100%;
+    }
+
+    h1 {
+      color: var(--primary);
+      font-size: 24px;
+      margin: 0 0 10px;
+    }
+
+    p {
+      color: var(--muted);
+      line-height: 1.5;
+      margin: 0 0 14px;
+    }
+
+    img {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      height: auto;
+      max-width: 100%;
+      padding: 10px;
+      width: 320px;
+    }
+
+    .app-link {
+      color: var(--primary);
+      font-size: 18px;
+      font-weight: 700;
+      margin: 14px 0;
+      overflow-wrap: anywhere;
+    }
+
+    .button {
+      background: var(--primary);
+      border-radius: 8px;
+      color: #fff;
+      display: inline-block;
+      font-weight: 700;
+      margin: 10px 0 18px;
+      padding: 12px 16px;
+      text-decoration: none;
+    }
+
+    .steps {
+      border-top: 1px solid var(--line);
+      display: grid;
+      gap: 10px;
+      padding-top: 16px;
+      text-align: left;
+    }
+
+    .steps strong {
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Instalar Rio Passos no celular</h1>
+    <p>Aponte a camera para o QR Code ou toque no botao abaixo.</p>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=320x320&amp;data=https%3A%2F%2Fgestao-locacoes-opal.vercel.app%2F" alt="QR Code do app Rio Passos">
+    <div class="app-link">https://gestao-locacoes-opal.vercel.app/</div>
+    <a class="button" href="https://gestao-locacoes-opal.vercel.app/">Abrir app</a>
+    <div class="steps">
+      <div><strong>Android:</strong> abra no Chrome, toque nos tres pontos e escolha Instalar app ou Adicionar a tela inicial.</div>
+      <div><strong>iPhone:</strong> abra no Safari, toque em Compartilhar e escolha Adicionar a Tela de Inicio.</div>
+    </div>
+  </main>
+</body>
+</html>

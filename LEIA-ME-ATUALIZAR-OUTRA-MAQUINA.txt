@@ -1,0 +1,12 @@
+﻿Rio Passos - Atualizar outra maquina
+
+1. Feche o app/navegador na outra maquina.
+2. Extraia o arquivo rio-passos-atualizacao-local-1.9.0.zip ou rio-passos-atualizacao.zip em uma pasta temporaria.
+3. Copie todos os arquivos extraidos para a pasta onde o app antigo esta instalado/publicado.
+4. Substitua os arquivos existentes quando o Windows perguntar.
+5. Abra o app novamente e confirme que a versao exibida e local-1.9.0.
+6. Se houver dados na nuvem, entre no login e use Acesso e nuvem > Baixar do Supabase.
+
+Versao do pacote: local-1.9.0
+Gerado em: 2026-06-28T12:04:26-03:00
+

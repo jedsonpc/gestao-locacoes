@@ -1,0 +1,24 @@
+﻿Rio Passos - pacote de instalacao
+Versao: local-1.9.0
+Gerado em: 2026-06-28T12:04:26-03:00
+
+Conteudo:
+- app: arquivos funcionais atualizados do aplicativo PWA.
+- instalar-atalho-windows.bat: instalador de atalho para notebook/PC Windows.
+- installers: scripts usados pelo instalador do Windows.
+- INSTALAR-ANDROID-IOS.md: instrucoes para instalar no Android e iPhone.
+
+Como instalar no Windows:
+1. Extraia este ZIP.
+2. Clique duas vezes em instalar-atalho-windows.bat.
+3. Use o atalho Rio Passos criado na Area de Trabalho.
+
+Como instalar no Android/iOS:
+1. Publique a pasta app em um endereco HTTPS.
+2. Abra o endereco no Chrome (Android) ou Safari (iPhone).
+3. No Android, use o botao do app quando disponivel ou o menu de tres pontos do Chrome > Instalar app / Adicionar a tela inicial.
+4. No iPhone, use Compartilhar > Adicionar a Tela de Inicio.
+
+Login inicial encontrado no codigo: usuario admin, senha admin123.
+A sincronizacao Supabase esta configurada em supabase-config.js; confirme as regras/tabelas no Supabase antes de usar com dados reais.
+
