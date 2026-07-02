@@ -14,8 +14,8 @@ const backupDirectoryHandleKey = "app-backup-folder";
 const backupMaxItems = 5;
 const preferredBackupFolderLabel = "D:\\App\\backups";
 const companyName = "Imobiliaria Rio dos Passos Ltda";
-const appVersion = "local-1.9.10";
-const appDeployedAt = "2026-07-01T22:40:36-03:00";
+const appVersion = "local-1.9.16";
+const appDeployedAt = "2026-07-02T13:09:31-03:00";
 const updatePackageFileName = "rio-dos-passos-atualizacao.zip";
 const updatePackageManifestFileName = "update-package.json";
 const appStorage = createSafeStorage("app");
@@ -184,6 +184,13 @@ function activateOfflineSession(user = getCachedOfflineUser()) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  const hasActiveScreenSession = appSessionStorage.getItem(sessionKey) === "active";
+  if (!hasActiveScreenSession) {
+    appSessionStorage.removeItem(sessionUserKey);
+    location.replace("login.html");
+    return;
+  }
+
   if (!window.SupabaseSync && canUseCachedOfflineUser()) {
     activateOfflineSession();
   } else if (!window.SupabaseSync) {
@@ -1041,8 +1048,11 @@ async function login(form) {
       renderAll();
       return;
     }
-    await window.SupabaseSync.signIn(email, data.password || "");
-    const user = await resolveSupabaseUser(3, 200);
+    if (!window.SupabaseSync) {
+      throw new Error("Conexao com Supabase nao carregada. Verifique a internet e recarregue.");
+    }
+    const signedUser = await window.SupabaseSync.signIn(email, data.password || "");
+    const user = signedUser || await resolveSupabaseUser(3, 200);
     if (!user) throw new Error("Sessao Supabase nao retornada.");
     cacheOfflineUser(user);
     activateSupabaseSession(user);
@@ -1452,6 +1462,14 @@ function getContractMonthlyValueForDate(contract, referenceDate = new Date()) {
   return Number(adjustment?.monthlyValue || baseValue);
 }
 
+function getContractMonthlyValueForCompetence(contract, competenceDate = new Date()) {
+  const baseValue = Number(contract?.monthlyValue || 0);
+  const date = competenceDate instanceof Date ? competenceDate : parseMonthValue(competenceDate);
+  if (!contract?.hasAdjustedRent || !date) return baseValue;
+  const adjustment = getContractRentAdjustmentForCompetence(contract, date);
+  return Number(adjustment?.monthlyValue || baseValue);
+}
+
 function getContractRentAdjustmentForDate(contract, referenceDate = new Date()) {
   const date = referenceDate instanceof Date ? referenceDate : parseDate(referenceDate);
   if (!date) return null;
@@ -1463,6 +1481,23 @@ function getContractRentAdjustmentForDate(contract, referenceDate = new Date()) 
       return start && end && date >= start && date <= end;
     })
     .sort((left, right) => String(right.startDate).localeCompare(String(left.startDate)))[0] || null;
+}
+
+function getContractRentAdjustmentForCompetence(contract, competenceDate = new Date()) {
+  const date = competenceDate instanceof Date ? competenceDate : parseMonthValue(competenceDate);
+  if (!date) return null;
+  const monthStart = firstDayOfMonth(date);
+  const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const competence = toMonthValue(date);
+  const adjustments = normalizeRentAdjustments(contract);
+  return adjustments
+    .filter((adjustment) => {
+      const start = parseDate(adjustment.startDate);
+      const end = parseDate(adjustment.endDate);
+      const adjustmentCompetence = normalizeCompetence(adjustment.competence, adjustment.startDate);
+      return start && end && competence >= adjustmentCompetence && monthStart <= end && monthEnd >= start;
+    })
+    .sort((left, right) => String(right.competence || right.startDate).localeCompare(String(left.competence || left.startDate)))[0] || null;
 }
 
 function getContractAdjustedRentText(contract) {
@@ -2981,7 +3016,7 @@ function buildAutomaticReceivables(period) {
         client: findClient(contract.clientId),
         dueDate,
         month: toMonthValue(monthDate),
-        expected: inGracePeriod ? 0 : getContractMonthlyValueForDate(contract, dueDate),
+        expected: inGracePeriod ? 0 : getContractMonthlyValueForCompetence(contract, monthDate),
         received: 0,
         inGracePeriod,
         note: inGracePeriod ? "Periodo de carencia para inicio do pagamento." : getSecurityDepositNote(contract),
@@ -2989,12 +3024,11 @@ function buildAutomaticReceivables(period) {
     });
   });
 
+  const receivableContractKeys = new Set(receivables.map((item) => `contract:${item.contract.id}:${item.month}`));
   const paymentsByPropertyMonth = state.payments.reduce((groups, payment) => {
     const paymentDate = getPaymentCompetenceDate(payment);
     if (!paymentDate || !isDateInPeriod(paymentDate, period.startDate, period.endDate)) return groups;
-    const key = payment.contractId
-      ? `contract:${payment.contractId}:${toMonthValue(paymentDate)}`
-      : `property:${payment.propertyId}:${toMonthValue(paymentDate)}`;
+    const key = getAutomaticReceivablePaymentGroupKey(payment, paymentDate, receivableContractKeys);
     groups[key] = (groups[key] || 0) + Number(payment.totalAmount || 0);
     return groups;
   }, {});
@@ -3015,6 +3049,13 @@ function buildAutomaticReceivables(period) {
     });
 
   return receivables;
+}
+
+function getAutomaticReceivablePaymentGroupKey(payment, paymentDate, receivableContractKeys = new Set()) {
+  const month = toMonthValue(paymentDate);
+  const contractKey = payment.contractId ? `contract:${payment.contractId}:${month}` : "";
+  const propertyKey = `property:${payment.propertyId}:${month}`;
+  return contractKey && receivableContractKeys.has(contractKey) ? contractKey : propertyKey;
 }
 
 function getReceivableStatus(item) {
@@ -3305,7 +3346,7 @@ function renderReports() {
     .filter((contract) => clientId === "all" || contract.clientId === clientId)
     .filter((contract) => status === "all" || getContractStatus(contract).key === status)
     .filter((contract) => contractMatchesReportFilters(contract, filters))
-    .map(toReportRow);
+    .map((contract) => toReportRow(contract, filters));
 
   renderReportMetrics(rows, payments);
   renderRevenueReport(payments);
@@ -3454,11 +3495,16 @@ function getReportFilters() {
 function contractMatchesReportFilters(contract, filters) {
   const startsBeforeEnd = !filters.endDate || parseDate(contract.startDate) <= parseDate(filters.endDate);
   const endsAfterStart = !filters.startDate || parseDate(contract.endDate) >= parseDate(filters.startDate);
-  const referenceDate = filters.startDate || filters.endDate || new Date();
-  const valueForFilter = getContractMonthlyValueForDate(contract, referenceDate);
+  const valueForFilter = getContractMonthlyValueForCompetence(contract, getReportReferenceDate(filters));
   const aboveMin = !filters.minValue || valueForFilter >= filters.minValue;
   const belowMax = !filters.maxValue || valueForFilter <= filters.maxValue;
   return startsBeforeEnd && endsAfterStart && aboveMin && belowMax;
+}
+
+function getReportReferenceDate(filters = getReportFilters()) {
+  if (filters.startDate) return parseDate(filters.startDate);
+  if (filters.endDate) return parseDate(filters.endDate);
+  return getFinancialReferenceDate();
 }
 
 function renderReportMetrics(rows, payments = getFilteredPayments()) {
@@ -3930,14 +3976,15 @@ function deleteAccessUser() {
   setText("settings-message", "Usuarios locais foram removidos. A autenticacao ativa e feita pelo Supabase.");
 }
 
-function toReportRow(contract) {
+function toReportRow(contract, filters = getReportFilters()) {
   const property = findProperty(contract.propertyId);
   const client = findClient(contract.clientId);
-  const expenses = state.expenses
+  const expenses = getFilteredExpenses(filters)
     .filter((expense) => expenseBelongsToContract(expense, contract))
     .reduce((sum, expense) => sum + expense.amount, 0);
   const ownerChargeCount = chargeRules.filter((rule) => (contract[rule.key] || "cliente") === "locador").length;
   const status = getContractStatus(contract);
+  const referenceDate = getReportReferenceDate(filters);
 
   return {
     contractId: contract.id,
@@ -3947,7 +3994,7 @@ function toReportRow(contract) {
     client: client?.name || "-",
     contact: client ? `${client.contact} | ${client.phone}` : "-",
     period: `${formatDate(contract.startDate)} a ${formatDate(contract.endDate)}`,
-    monthlyValue: getContractMonthlyValueForDate(contract),
+    monthlyValue: getContractMonthlyValueForCompetence(contract, referenceDate),
     adjustedRent: getContractAdjustedRentText(contract),
     financialTerms: getContractFinancialTermsText(contract),
     expenses,
@@ -3962,7 +4009,7 @@ function expenseBelongsToContract(expense, contract) {
   if (!expense || !contract) return false;
   if (expense.contractId) return expense.contractId === contract.id;
   if (expense.propertyId !== contract.propertyId) return false;
-  const expenseDate = parseDate(expense.expenseDate);
+  const expenseDate = getExpenseCompetenceDate(expense);
   const start = parseDate(contract.startDate);
   const end = parseDate(contract.endDate);
   return Boolean(expenseDate && start && end && expenseDate >= start && expenseDate <= end);
@@ -4560,10 +4607,10 @@ function getErpExportData() {
   const period = getErpPeriod();
   const receivables = buildAutomaticReceivables(period);
   const payments = state.payments.filter((p) =>
-    isDateInPeriod(parseDate(p.paymentDate), period.startDate, period.endDate),
+    isDateInPeriod(getPaymentCompetenceDate(p), period.startDate, period.endDate),
   );
   const expenses = state.expenses.filter((e) =>
-    isDateInPeriod(parseDate(e.expenseDate), period.startDate, period.endDate),
+    isDateInPeriod(getExpenseCompetenceDate(e), period.startDate, period.endDate),
   );
   const receivedRevenue = payments.reduce((s, p) => s + Number(p.totalAmount || 0), 0);
   const expectedRevenue = receivables.reduce((s, i) => s + i.expected, 0);
@@ -4610,10 +4657,10 @@ function getErpExportData() {
   const cashflowRows = period.months.map((monthDate) => {
     const month = toMonthValue(monthDate);
     const inflow = payments
-      .filter((p) => toMonthValue(parseDate(p.paymentDate)) === month)
+      .filter((p) => toMonthValue(getPaymentCompetenceDate(p)) === month)
       .reduce((s, p) => s + Number(p.totalAmount || 0), 0);
     const outflow = expenses
-      .filter((e) => toMonthValue(parseDate(e.expenseDate)) === month)
+      .filter((e) => toMonthValue(getExpenseCompetenceDate(e)) === month)
       .reduce((s, e) => s + Number(e.amount || 0), 0);
     return [formatMonth(monthDate), Number(inflow.toFixed(2)), Number(outflow.toFixed(2)), Number((inflow - outflow).toFixed(2))];
   });
@@ -4786,6 +4833,12 @@ function exportFinancialErpCsv() {
     "text/csv;charset=utf-8",
   );
 }
+
+
+
+
+
+
 
 
 

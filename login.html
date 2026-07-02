@@ -3,29 +3,192 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#5c171b">
 <title>Login - Rio dos Passos</title>
 <link rel="stylesheet" href="styles.css">
 <style>
-  body { display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; background:#f4f6fa; font-family:system-ui,sans-serif; }
-  .login-card { background:#fff; padding:2rem; border-radius:12px; box-shadow:0 4px 24px rgba(0,0,0,.08); width:100%; max-width:360px; }
-  .login-card h1 { margin:0 0 .5rem; font-size:1.4rem; color:#1a2a4a; }
-  .login-card p.sub { margin:0 0 1.5rem; color:#666; font-size:.9rem; }
-  .login-card label { display:block; margin:.75rem 0 .25rem; font-size:.85rem; color:#333; font-weight:600; }
-  .login-card input { width:100%; padding:.6rem .75rem; border:1px solid #d0d5dd; border-radius:6px; font-size:1rem; box-sizing:border-box; }
-  .login-card button { width:100%; margin-top:1.25rem; padding:.7rem; background:#1a5fb4; color:#fff; border:none; border-radius:6px; font-size:1rem; font-weight:600; cursor:pointer; }
-  .login-card button:disabled { opacity:.6; cursor:wait; }
-  .login-card .err { margin-top:1rem; padding:.6rem; background:#fee; color:#c00; border-radius:6px; font-size:.85rem; display:none; }
+  :root {
+    --brand-primary: #5c171b;
+    --brand-primary-dark: #3e1013;
+    --brand-accent: #d36467;
+    --brand-line: #edc7c8;
+    --brand-soft: #fff6f6;
+    --text: #1d2528;
+    --muted: #667275;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    align-items: center;
+    background:
+      radial-gradient(circle at top left, rgba(211, 100, 103, 0.22), transparent 34rem),
+      linear-gradient(135deg, #fff 0%, #f7eeee 48%, #f5f7f8 100%);
+    color: var(--text);
+    display: flex;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    justify-content: center;
+    margin: 0;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  .login-card {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(92, 23, 27, 0.12);
+    border-radius: 8px;
+    box-shadow: 0 18px 55px rgba(62, 16, 19, 0.16);
+    max-width: 420px;
+    padding: 28px;
+    width: 100%;
+  }
+
+  .login-logo {
+    background: #fff;
+    border: 1px solid var(--brand-line);
+    border-radius: 8px;
+    display: block;
+    margin: 0 auto 22px;
+    max-width: 280px;
+    padding: 10px;
+    width: 100%;
+  }
+
+  .login-card h1 {
+    color: var(--brand-primary);
+    font-size: 1.45rem;
+    line-height: 1.2;
+    margin: 0 0 8px;
+    text-align: center;
+  }
+
+  .login-card p.sub {
+    color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.45;
+    margin: 0 0 22px;
+    text-align: center;
+  }
+
+  .login-card label {
+    color: var(--brand-primary-dark);
+    display: block;
+    font-size: 0.86rem;
+    font-weight: 700;
+    margin: 14px 0 6px;
+  }
+
+  .login-card input {
+    background: #fff;
+    border: 1px solid #d9e0e2;
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 1rem;
+    min-height: 46px;
+    outline: none;
+    padding: 0.7rem 0.8rem;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    width: 100%;
+  }
+
+  .login-card input:focus {
+    border-color: var(--brand-accent);
+    box-shadow: 0 0 0 3px rgba(211, 100, 103, 0.18);
+  }
+
+  .password-wrap {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+  }
+
+  .password-wrap input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .toggle-password {
+    align-items: center;
+    background: var(--brand-soft);
+    border: 1px solid var(--brand-line);
+    border-radius: 8px;
+    color: var(--brand-primary);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 0.86rem;
+    font-weight: 700;
+    justify-content: center;
+    min-height: 46px;
+    padding: 0 12px;
+    white-space: nowrap;
+  }
+
+  .submit-btn {
+    background: var(--brand-primary);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 700;
+    margin-top: 22px;
+    min-height: 48px;
+    padding: 0.78rem;
+    width: 100%;
+  }
+
+  .submit-btn:hover,
+  .submit-btn:focus {
+    background: var(--brand-primary-dark);
+  }
+
+  .submit-btn:disabled {
+    cursor: wait;
+    opacity: 0.66;
+  }
+
+  .login-card .err {
+    background: #fff1f1;
+    border: 1px solid #efc2c2;
+    border-radius: 8px;
+    color: #953232;
+    display: none;
+    font-size: 0.88rem;
+    line-height: 1.35;
+    margin-top: 14px;
+    padding: 0.75rem;
+  }
+
+  @media (max-width: 420px) {
+    body {
+      padding: 16px;
+    }
+
+    .login-card {
+      padding: 22px;
+    }
+
+    .login-logo {
+      max-width: 250px;
+    }
+  }
 </style>
 </head>
 <body>
   <form class="login-card" id="login-form">
-    <h1>Imobiliária Rio dos Passos</h1>
+    <img class="login-logo" src="logo-imobiliaria-rio.svg" alt="Imobiliária Rio dos Passos Ltda">
+    <h1>Acesso restrito</h1>
     <p class="sub">Entre com seu email e senha cadastrados.</p>
     <label for="email">Email</label>
     <input type="email" id="email" required autocomplete="username">
     <label for="password">Senha</label>
-    <input type="password" id="password" required autocomplete="current-password">
-    <button type="submit" id="submit-btn">Entrar</button>
+    <div class="password-wrap">
+      <input type="password" id="password" required autocomplete="current-password">
+      <button class="toggle-password" type="button" id="toggle-password" aria-controls="password" aria-pressed="false">Mostrar</button>
+    </div>
+    <button class="submit-btn" type="submit" id="submit-btn">Entrar</button>
     <div class="err" id="err"></div>
   </form>
 
@@ -96,6 +259,16 @@
       location.replace("index.html");
     }
 
+    function enterOnline(user) {
+      sessionStorage.setItem(sessionKey, "active");
+      sessionStorage.setItem(sessionUserKey, JSON.stringify({
+        id: user.id,
+        username: user.email || "usuario@supabase",
+        role: "admin",
+      }));
+      location.replace("index.html");
+    }
+
     (async () => {
       const err = document.getElementById("err");
       const btn = document.getElementById("submit-btn");
@@ -113,15 +286,22 @@
         return;
       }
       try {
-        const user = await window.SupabaseSync.getCurrentUser();
-        if (user) location.replace("index.html");
+        await window.SupabaseSync.signOut();
       } catch {
-        err.textContent = "Nao foi possivel verificar uma sessao anterior. Informe email e senha para entrar novamente.";
-        err.style.display = "block";
+        console.warn("Nao foi possivel encerrar sessao anterior. Informe email e senha para entrar novamente.");
       } finally {
         btn.disabled = false;
       }
     })();
+
+    document.getElementById("toggle-password").addEventListener("click", () => {
+      const password = document.getElementById("password");
+      const toggle = document.getElementById("toggle-password");
+      const shouldShow = password.type === "password";
+      password.type = shouldShow ? "text" : "password";
+      toggle.textContent = shouldShow ? "Ocultar" : "Mostrar";
+      toggle.setAttribute("aria-pressed", String(shouldShow));
+    });
 
     document.getElementById("login-form").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -147,7 +327,7 @@
         const user = signedUser || await window.SupabaseSync.getCurrentUser();
         if (!user) throw new Error("Login aceito, mas a sessao nao foi gravada no navegador. Recarregue e tente novamente.");
         cacheOfflineUser(user);
-        location.replace("index.html");
+        enterOnline(user);
       } catch (e2) {
         err.textContent = "Falha no login: " + (e2.message || e2);
         err.style.display = "block";
