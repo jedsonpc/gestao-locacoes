@@ -1,9 +1,9 @@
 ﻿// Rio dos Passos PWA - service worker
 // A linha __APP_VERSION__ eh reescrita automaticamente pelo GitHub Actions
 // no momento do deploy (vira o SHA do commit). Cada deploy = novo cache.
-const appVersion = "local-1.9.8";
+const appVersion = "local-1.9.10";
 const cachePrefix = "gestao-locacoes-";
-const cacheName = `gestao-locacoes-${appVersion}`;
+const cacheName = `gestao-locacoes-${appVersion}-mobile-refresh`;
 const staticFiles = [
   "./",
   "./index.html",
@@ -49,8 +49,7 @@ self.addEventListener("install", (event) => {
       Promise.allSettled(staticFiles.map((f) => cache.add(f).catch(() => null))),
     ),
   );
-  // NAO fazemos skipWaiting automatico: aguardamos confirmacao do usuario
-  // via o banner "nova versao disponivel".
+  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
@@ -89,7 +88,7 @@ self.addEventListener("fetch", (event) => {
   if (isHtmlOrScript(event.request, url)) {
     event.respondWith(
       caches.match(event.request).then((cachedResponse) =>
-        fetch(event.request)
+        fetch(event.request, { cache: "no-store" })
         .then((response) => {
           if (response && response.ok) {
             const copy = response.clone();
@@ -118,6 +117,9 @@ self.addEventListener("fetch", (event) => {
     }),
   );
 });
+
+
+
 
 
 

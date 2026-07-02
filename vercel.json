@@ -5,16 +5,16 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "no-cache"
+          "value": "no-store, max-age=0, must-revalidate"
         }
       ]
     },
     {
-      "source": "/(rio-dos-passos-atualizacao.*\\.zip|update-package\\.json|version\\.json)",
+      "source": "/(index\\.html|login\\.html|instalar-celular\\.html|app\\.js|styles\\.css|supabase-sync\\.js|update-checker\\.js|rio-dos-passos-atualizacao.*\\.zip|update-package\\.json|version\\.json)",
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "no-cache"
+          "value": "no-store, max-age=0, must-revalidate"
         }
       ]
     },

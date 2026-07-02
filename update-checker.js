@@ -9,6 +9,12 @@
   let registrationPromise = null;
   let installButtons = [];
 
+  function getLoadedVersion() {
+    const versionEl = document.getElementById("metric-app-version");
+    const visibleVersion = versionEl?.textContent?.trim();
+    return visibleVersion && visibleVersion !== "-" ? visibleVersion : currentVersion;
+  }
+
   function isAutoUpdateEnabled() {
     return localStorage.getItem(autoUpdateKey) !== "off";
   }
@@ -115,9 +121,10 @@
     await registration.update();
 
     const latestVersion = await fetchVersion();
-    if (!currentVersion) currentVersion = latestVersion;
+    const loadedVersion = getLoadedVersion();
+    if (!currentVersion) currentVersion = loadedVersion || latestVersion;
 
-    if (latestVersion && currentVersion && latestVersion !== currentVersion) {
+    if (latestVersion && loadedVersion && latestVersion !== loadedVersion) {
       updateStatusText("Nova versao encontrada.");
       if (isAutoUpdateEnabled() || options.apply) {
         applyUpdate();
@@ -128,6 +135,7 @@
     }
 
     updateStatusText("App atualizado.");
+    if (latestVersion) currentVersion = latestVersion;
     return false;
   }
 
@@ -155,7 +163,7 @@
   }
 
   if ("serviceWorker" in navigator) {
-    registrationPromise = navigator.serviceWorker.register("./sw.js").then((registration) => {
+    registrationPromise = navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).then((registration) => {
       if (registration.waiting) {
         waitingWorker = registration.waiting;
         if (isAutoUpdateEnabled()) applyUpdate();

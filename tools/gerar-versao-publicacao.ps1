@@ -62,6 +62,7 @@ foreach ($file in $swFiles) {
   if (-not (Test-Path -LiteralPath $file)) { continue }
   $text = Get-Content -LiteralPath $file -Raw -Encoding UTF8
   $text = $text -replace 'const appVersion = "[^"]+";', "const appVersion = `"$Version`";"
+  $text = $text -replace 'const cacheName = `gestao-locacoes-\$\{appVersion\}`;', 'const cacheName = `gestao-locacoes-${appVersion}-mobile-refresh`;'
   Set-Content -LiteralPath $file -Value $text -Encoding UTF8
 }
 
@@ -99,6 +100,7 @@ $publishFiles = @(
   "logo-imobiliaria-rio.svg",
   "login.html"
 )
+if (Test-Path -LiteralPath $publicDir) { Remove-Item -LiteralPath $publicDir -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $publicDir | Out-Null
 foreach ($name in $publishFiles) {
   $source = Join-Path $root $name
@@ -142,6 +144,19 @@ if (-not $SkipZip) {
     if (Test-Path -LiteralPath $source) {
       Copy-Item -LiteralPath $source -Destination (Join-Path $installerDir $name) -Force
     }
+  }
+
+  foreach ($name in $installerRootFiles) {
+    $docPath = Join-Path $installerDir $name
+    if (-not (Test-Path -LiteralPath $docPath)) { continue }
+    $doc = Get-Content -LiteralPath $docPath -Raw -Encoding UTF8
+    $doc = $doc -replace 'local-\d+\.\d+\.\d+', $Version
+    $doc = $doc -replace 'rio-passos-atualizacao-local-\d+\.\d+\.\d+\.zip', "rio-dos-passos-atualizacao-$Version.zip"
+    $doc = $doc -replace 'rio-dos-passos-atualizacao-local-\d+\.\d+\.\d+\.zip', "rio-dos-passos-atualizacao-$Version.zip"
+    $doc = $doc -replace 'Rio dos Passos - Atualizacao [^\r\n]+', "Rio dos Passos - Atualizacao $Version"
+    $doc = $doc -replace 'Rio Passos - Atualizacao [^\r\n]+', "Rio dos Passos - Atualizacao $Version"
+    $doc = $doc -replace 'Versao do pacote: [^\r\n]+', "Versao do pacote: $Version"
+    Set-Content -LiteralPath $docPath -Value $doc -Encoding UTF8
   }
 
   $installersSource = Join-Path $root "installers"
