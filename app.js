@@ -14,7 +14,7 @@ const backupDirectoryHandleKey = "app-backup-folder";
 const backupMaxItems = 5;
 const preferredBackupFolderLabel = "D:\\App\\backups";
 const companyName = "Imobiliaria Rio dos Passos Ltda";
-const appVersion = "local-1.9.35";
+const appVersion = "local-1.9.36";
 let deferredMobileInstallPrompt = null;
 
 window.addEventListener("beforeinstallprompt", (event) => {
@@ -27,7 +27,7 @@ window.addEventListener("appinstalled", () => {
   deferredMobileInstallPrompt = null;
   updateMobileInstallCard();
 });
-const appDeployedAt = "2026-07-17T17:38:16-03:00";
+const appDeployedAt = "2026-07-17T17:46:33-03:00";
 const updatePackageFileName = "rio-dos-passos-atualizacao.zip";
 const updatePackageManifestFileName = "update-package.json";
 const appStorage = createSafeStorage("app");
@@ -4875,12 +4875,22 @@ function summarizeRecord(record) {
 
 function renderTable(bodyId, rows, rowTemplate) {
   const body = document.getElementById(bodyId);
+  if (!body) return;
   if (!rows.length) {
     const colspan = document.getElementById(bodyId)?.closest("table")?.querySelectorAll("thead th").length || 8;
     body.innerHTML = `<tr><td colspan="${colspan}">${document.getElementById("empty-template").innerHTML}</td></tr>`;
     return;
   }
-  body.innerHTML = rows.map((row, index) => `<tr>${rowTemplate(row, index)}</tr>`).join("");
+  body.innerHTML = rows
+    .map((row, index) => {
+      try {
+        return `<tr>${rowTemplate(row, index)}</tr>`;
+      } catch (error) {
+        console.error(`Falha ao exibir registro na tabela ${bodyId}`, row?.id || index, error);
+        return `<tr><td colspan="${body.closest("table")?.querySelectorAll("thead th").length || 8}">Registro com dados invalidos. Use Editar para revisar.</td></tr>`;
+      }
+    })
+    .join("");
 }
 
 function renderList(id, rows, template) {
@@ -5822,7 +5832,8 @@ function formatNumber(value) {
 
 function formatDate(dateString) {
   if (!dateString) return "-";
-  return dateFormatter.format(new Date(`${dateString}T00:00:00Z`));
+  const date = new Date(`${dateString}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? "-" : dateFormatter.format(date);
 }
 
 function isValidDateTime(dateString) {
@@ -6069,6 +6080,7 @@ function performFinancialErpCsv() {
     "text/csv;charset=utf-8",
   );
 }
+
 
 
 
