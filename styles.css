@@ -756,6 +756,73 @@ textarea {
   z-index: 1;
 }
 
+.mobile-install-dialog {
+  width: min(520px, calc(100vw - 28px));
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 70px rgba(24, 10, 12, 0.35);
+}
+
+.mobile-install-dialog::backdrop {
+  background: rgba(29, 37, 40, 0.62);
+  backdrop-filter: blur(3px);
+}
+
+.mobile-install-dialog form {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.mobile-install-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mobile-install-dialog-head span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+}
+
+.mobile-install-dialog-head h2 {
+  margin: 4px 0 0;
+  font-size: 20px;
+}
+
+.mobile-install-steps {
+  display: grid;
+  gap: 9px;
+}
+
+.mobile-install-steps p {
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  line-height: 1.45;
+}
+
+.mobile-install-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.mobile-install-guide-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .missing-payments-metric {
   border-left: 4px solid var(--accent);
 }
@@ -1921,6 +1988,20 @@ td {
 
   .mobile-install-card .primary-button {
     grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .mobile-install-dialog form {
+    padding: 16px;
+  }
+
+  .mobile-install-dialog-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mobile-install-dialog-actions > * {
+    justify-content: center;
     width: 100%;
   }
 

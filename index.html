@@ -14,7 +14,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=local-1.9.33" />
+    <link rel="stylesheet" href="styles.css?v=local-1.9.34" />
   </head>
   <body class="locked">
     <section class="login-screen" id="login-screen" aria-label="Acesso ao sistema">
@@ -81,7 +81,7 @@
             <span class="sync-status" id="current-user-badge">Usuario nao identificado</span>
             <span class="sync-status" id="sync-status">Offline local</span>
             <span class="sync-status app-version-status">
-              <strong id="metric-app-version">local-1.9.33</strong>
+              <strong id="metric-app-version">local-1.9.34</strong>
               <small id="metric-app-updated">13/07/2026 18:20</small>
             </span>
             <button class="ghost-button app-install-action hidden" id="install-app-top-button" type="button">Gerar QR Code para acesso ao sistema</button>
@@ -1505,15 +1505,32 @@
       <div class="empty-state">Nenhum registro encontrado.</div>
     </template>
 
+    <dialog class="mobile-install-dialog" id="mobile-install-dialog">
+      <form method="dialog">
+        <div class="mobile-install-dialog-head">
+          <div>
+            <span>INSTALAÇÃO NO CELULAR</span>
+            <h2 id="mobile-install-dialog-title">Adicionar à tela inicial</h2>
+          </div>
+          <button class="ghost-button" value="cancel" type="submit" aria-label="Fechar">Fechar</button>
+        </div>
+        <div class="mobile-install-steps" id="mobile-install-dialog-content"></div>
+        <div class="mobile-install-dialog-actions">
+          <a class="ghost-button mobile-install-guide-link" href="instalar-celular.html" target="_blank" rel="noopener">Ver instruções completas</a>
+          <button class="primary-button" value="default" type="submit">Entendi</button>
+        </div>
+      </form>
+    </dialog>
+
     <!-- Bibliotecas para exportacao em Excel (.xlsx) e PDF -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     <script src="supabase-config.js" defer></script>
-    <script src="supabase-sync.js?v=local-1.9.33" defer></script>
-    <script src="update-checker.js?v=local-1.9.33" defer></script>
-    <script src="app.js?v=local-1.9.33" defer></script>
+    <script src="supabase-sync.js?v=local-1.9.34" defer></script>
+    <script src="update-checker.js?v=local-1.9.34" defer></script>
+    <script src="app.js?v=local-1.9.34" defer></script>
     <script>
       document.addEventListener("click", (event) => {
         const button = event.target.closest("[data-toggle-password]");
@@ -1528,6 +1545,7 @@
       });
     </script>  </body>
 </html>
+
 
 
 

@@ -14,7 +14,7 @@ const backupDirectoryHandleKey = "app-backup-folder";
 const backupMaxItems = 5;
 const preferredBackupFolderLabel = "D:\\App\\backups";
 const companyName = "Imobiliaria Rio dos Passos Ltda";
-const appVersion = "local-1.9.33";
+const appVersion = "local-1.9.34";
 let deferredMobileInstallPrompt = null;
 
 window.addEventListener("beforeinstallprompt", (event) => {
@@ -27,7 +27,7 @@ window.addEventListener("appinstalled", () => {
   deferredMobileInstallPrompt = null;
   updateMobileInstallCard();
 });
-const appDeployedAt = "2026-07-17T16:15:40-03:00";
+const appDeployedAt = "2026-07-17T16:24:50-03:00";
 const updatePackageFileName = "rio-dos-passos-atualizacao.zip";
 const updatePackageManifestFileName = "update-package.json";
 const appStorage = createSafeStorage("app");
@@ -1238,22 +1238,61 @@ async function handleMobileInstall() {
   const help = document.getElementById("mobile-install-help");
   if (isIosMobileDevice()) {
     if (help) help.innerHTML = "Toque em <strong>Compartilhar</strong> e selecione <strong>Adicionar à Tela de Início</strong>.";
+    showMobileInstallGuide("ios");
     return;
   }
 
   if (!deferredMobileInstallPrompt) {
     if (help) help.innerHTML = "Abra o menu do navegador e escolha <strong>Instalar app</strong> ou <strong>Adicionar à tela inicial</strong>.";
+    showMobileInstallGuide("android");
     return;
   }
 
-  deferredMobileInstallPrompt.prompt();
-  const choice = await deferredMobileInstallPrompt.userChoice;
-  deferredMobileInstallPrompt = null;
-  if (choice?.outcome === "accepted") {
-    document.getElementById("mobile-install-card")?.classList.add("hidden");
-  } else {
-    updateMobileInstallCard();
+  try {
+    deferredMobileInstallPrompt.prompt();
+    const choice = await deferredMobileInstallPrompt.userChoice;
+    deferredMobileInstallPrompt = null;
+    if (choice?.outcome === "accepted") {
+      document.getElementById("mobile-install-card")?.classList.add("hidden");
+    } else {
+      updateMobileInstallCard();
+      if (help) help.textContent = "Instalação cancelada. Toque novamente quando desejar criar o atalho.";
+    }
+  } catch {
+    deferredMobileInstallPrompt = null;
+    showMobileInstallGuide("android");
   }
+}
+
+function showMobileInstallGuide(platform = "android") {
+  const dialog = document.getElementById("mobile-install-dialog");
+  const title = document.getElementById("mobile-install-dialog-title");
+  const content = document.getElementById("mobile-install-dialog-content");
+  if (!dialog || !title || !content) {
+    alert(platform === "ios"
+      ? "Toque em Compartilhar e depois em Adicionar à Tela de Início."
+      : "Abra o menu de três pontos do navegador e escolha Instalar app ou Adicionar à tela inicial.");
+    return;
+  }
+
+  if (platform === "ios") {
+    title.textContent = "Adicionar no iPhone ou iPad";
+    content.innerHTML = `
+      <p><strong>1.</strong> Abra esta página no Safari.</p>
+      <p><strong>2.</strong> Toque no botão <strong>Compartilhar</strong>.</p>
+      <p><strong>3.</strong> Escolha <strong>Adicionar à Tela de Início</strong> e confirme.</p>
+    `;
+  } else {
+    title.textContent = "Adicionar no Android";
+    content.innerHTML = `
+      <p><strong>1.</strong> Abra o menu de <strong>três pontos (⋮)</strong> do Chrome.</p>
+      <p><strong>2.</strong> Toque em <strong>Instalar app</strong> ou <strong>Adicionar à tela inicial</strong>.</p>
+      <p><strong>3.</strong> Confirme em <strong>Instalar</strong> ou <strong>Adicionar</strong>.</p>
+    `;
+  }
+
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "");
 }
 
 function activateSupabaseSession(user) {
@@ -6028,6 +6067,7 @@ function performFinancialErpCsv() {
     "text/csv;charset=utf-8",
   );
 }
+
 
 
 
