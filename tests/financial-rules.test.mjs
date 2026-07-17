@@ -92,6 +92,72 @@ function getAutomaticReceivablePaymentGroupKey(payment, paymentDate, receivableC
   return contractKey && receivableContractKeys.has(contractKey) ? contractKey : propertyKey;
 }
 
+function buildAutomaticReceivablesForTest(state, period) {
+  const receivables = [];
+  const activeContracts = state.contracts.filter((contract) => {
+    const start = parseDate(contract.startDate);
+    const end = parseDate(contract.endDate);
+    return start && end && start <= period.endDate && end >= period.startDate;
+  });
+
+  activeContracts.forEach((contract) => {
+    period.months.forEach((monthDate) => {
+      receivables.push({
+        contract,
+        property: state.properties.find((property) => property.id === contract.propertyId),
+        month: toMonthValue(monthDate),
+        dueDate: monthDate,
+        expected: Number(contract.monthlyValue || 0),
+        received: 0,
+      });
+    });
+  });
+
+  const receivableContractKeys = new Set(receivables.map((item) => `contract:${item.contract.id}:${item.month}`));
+  const paymentDetailsByKey = {};
+  const paymentsByPropertyMonth = state.payments.reduce((groups, payment) => {
+    const paymentDate = getPaymentCompetenceDate(payment);
+    if (!isDateInPeriod(paymentDate, period.startDate, period.endDate)) return groups;
+    const key = getAutomaticReceivablePaymentGroupKey(payment, paymentDate, receivableContractKeys);
+    groups[key] = (groups[key] || 0) + Number(payment.totalAmount || 0);
+    paymentDetailsByKey[key] = paymentDetailsByKey[key] || [];
+    paymentDetailsByKey[key].push(payment);
+    return groups;
+  }, {});
+
+  receivables.forEach((item) => {
+    const contractKey = `contract:${item.contract.id}:${item.month}`;
+    const propertyKey = `property:${item.contract.propertyId}:${item.month}`;
+    const contractAvailable = paymentsByPropertyMonth[contractKey] || 0;
+    const propertyAvailable = paymentsByPropertyMonth[propertyKey] || 0;
+    const propertyReceived = contractAvailable > 0
+      ? Math.min(propertyAvailable, Math.max(item.expected - contractAvailable, 0))
+      : Math.min(item.expected, propertyAvailable);
+    item.received = contractAvailable + propertyReceived;
+    const fromContract = Math.min(paymentsByPropertyMonth[contractKey] || 0, item.received);
+    paymentsByPropertyMonth[contractKey] = Math.max((paymentsByPropertyMonth[contractKey] || 0) - fromContract, 0);
+    paymentsByPropertyMonth[propertyKey] = Math.max((paymentsByPropertyMonth[propertyKey] || 0) - (item.received - fromContract), 0);
+  });
+
+  Object.entries(paymentsByPropertyMonth).forEach(([key, amount]) => {
+    if (amount <= 0.005) return;
+    const payment = paymentDetailsByKey[key]?.[0];
+    if (!payment) return;
+    const paymentDate = getPaymentCompetenceDate(payment);
+    receivables.push({
+      contract: state.contracts.find((contract) => contract.id === payment.contractId) || { id: payment.contractId || "", propertyId: payment.propertyId },
+      property: state.properties.find((property) => property.id === payment.propertyId),
+      month: key.split(":").pop() || toMonthValue(paymentDate),
+      dueDate: parseDate(payment.paymentDate) || paymentDate,
+      expected: amount,
+      received: amount,
+      note: "Lancamento recebido sem contrato ativo correspondente no periodo.",
+    });
+  });
+
+  return receivables;
+}
+
 function getFinancialLaunchCategory(collectionName, record) {
   if (collectionName === "expenses") return String(record.expenseType || "").trim().toLowerCase();
   if (collectionName === "payments") return "receita";
@@ -192,5 +258,58 @@ const expensePaidInNextMonth = { expenseDate: "2022-01-10", competence: "2021-12
 assert.equal(isDateInPeriod(getPaymentCompetenceDate(paidInNextMonth), erpPeriod2021.startDate, erpPeriod2021.endDate), true);
 assert.equal(isDateInPeriod(parseDate(paidInNextMonth.paymentDate), erpPeriod2021.startDate, erpPeriod2021.endDate), false);
 assert.equal(isDateInPeriod(getExpenseCompetenceDate(expensePaidInNextMonth), erpPeriod2021.startDate, erpPeriod2021.endDate), true);
+
+const legacyContractState = {
+  properties: [{ id: "property-2706", description: "Sala 2706" }],
+  contracts: [{
+    id: "legacy-contract-2706",
+    propertyId: "property-2706",
+    clientId: "client-1",
+    startDate: "2014-10-30",
+    endDate: "2016-08-29",
+    monthlyValue: 2888.5,
+  }],
+  payments: [{
+    propertyId: "property-2706",
+    contractId: "legacy-contract-2706",
+    paymentDate: "2021-06-29",
+    competence: "2021-06",
+    totalAmount: 2500,
+  }],
+};
+const legacyReceivables = buildAutomaticReceivablesForTest({
+  ...legacyContractState,
+  clients: [{ id: "client-1", name: "BDO" }],
+}, { ...erpPeriod2021, months: [parseCompetence("2021-06")] });
+assert.equal(legacyReceivables.length, 1);
+assert.equal(legacyReceivables[0].property.description, "Sala 2706");
+assert.equal(legacyReceivables[0].month, "2021-06");
+assert.equal(legacyReceivables[0].expected, 2500);
+assert.equal(legacyReceivables[0].received, 2500);
+
+const interestPaymentReceivables = buildAutomaticReceivablesForTest({
+  properties: [{ id: "property-1402", description: "Sala 1402" }],
+  clients: [{ id: "client-1", name: "Agencia Soma" }],
+  contracts: [{
+    id: "contract-1402",
+    propertyId: "property-1402",
+    clientId: "client-1",
+    startDate: "2018-09-30",
+    endDate: "2022-08-29",
+    monthlyValue: 2800,
+  }],
+  payments: [{
+    propertyId: "property-1402",
+    contractId: "contract-1402",
+    paymentDate: "2021-11-01",
+    competence: "2021-11",
+    amount: 3500,
+    chargeAmount: 300,
+    totalAmount: 3800,
+  }],
+}, { ...erpPeriod2021, months: [parseCompetence("2021-11")] });
+assert.equal(interestPaymentReceivables.length, 1);
+assert.equal(interestPaymentReceivables[0].expected, 2800);
+assert.equal(interestPaymentReceivables[0].received, 3800);
 
 console.log("financial-rules.test.mjs OK");

@@ -14,13 +14,14 @@ const backupDirectoryHandleKey = "app-backup-folder";
 const backupMaxItems = 5;
 const preferredBackupFolderLabel = "D:\\App\\backups";
 const companyName = "Imobiliaria Rio dos Passos Ltda";
-const appVersion = "local-1.9.16";
-const appDeployedAt = "2026-07-02T13:09:31-03:00";
+const appVersion = "local-1.9.32";
+const appDeployedAt = "2026-07-17T12:29:39-03:00";
 const updatePackageFileName = "rio-dos-passos-atualizacao.zip";
 const updatePackageManifestFileName = "update-package.json";
 const appStorage = createSafeStorage("app");
 const appSessionStorage = createSafeStorage("session");
 const recentFinancialLaunchLimit = 10;
+const chargeMonitoringStartDateValue = "2026-01-01";
 let appMetadata = {
   version: appVersion,
   deployedAt: appDeployedAt,
@@ -32,6 +33,7 @@ const initialState = {
   contracts: [],
   expenses: [],
   payments: [],
+  chargeConfirmations: [],
   auditLogs: [],
 };
 
@@ -40,8 +42,27 @@ const bundledRecoveryState = {"properties":[{"id":"property-1779817467079-adc327
 let state = loadState(); // estado inicial do cache local (sincroniza com Supabase no boot)
 let syncConfig = loadSyncConfig();
 let reportMode = "analytic";
+const REPORT_EXPORT_TABLES = {
+  analytic: [
+    { key: "revenue", title: "Receitas lancadas", selector: "#revenue-report-body", headers: ["Imovel", "Data", "Competencia", "Receita", "Encargo", "Total recebido", "Historico"] },
+    { key: "property", title: "Resultado por imovel", selector: "#property-report-body", headers: ["Imovel", "Receita recebida", "Despesas apropriadas", "Taxas do locador", "Receita liquida"] },
+    { key: "expense-detail", title: "Despesas detalhadas", selector: "#expense-detail-report-body", headers: ["Data", "Tipo", "Historico", "Contrato", "Valor"] },
+    { key: "expense-type", title: "Despesas por tipo", selector: "#expense-type-report-body", headers: ["Despesa", "Quantidade", "Total", "Participacao"] },
+    { key: "charges", title: "Encargos e vencimentos", selector: "#charges-report-body", headers: ["Cliente", "Encargo", "Responsavel", "Vencimento base", "Vencimento ajustado"] },
+    { key: "contracts", title: "Contratos filtrados", selector: "#reports-body", headers: ["Imovel", "Cliente", "Contato", "Vigencia", "Valor mensal", "Valor ajustado", "Garantia/carencia", "Despesa vinculada", "Status"] },
+  ],
+  summary: [
+    { key: "summary", title: "Resumo executivo", selector: "#summary-report-body", headers: ["Indicador", "Resultado", "Leitura gerencial"] },
+    { key: "summary-property", title: "Resultado gerencial por imovel", selector: "#summary-property-body", headers: ["Imovel", "Receita", "Encargos", "Despesas", "Resultado", "Part. receita"] },
+  ],
+};
+
+const ERP_EXPORT_KEYS = ["summary", "cashflow", "receivables", "expenseCategories", "profitability"];
 let backupDirectoryHandle = null;
 let backupFolderReady = false;
+let accessUsers = [];
+let accessUsersLoading = false;
+let accessUsersLoadedAt = 0;
 
 const roleLabels = {
   admin: "Administrador",
@@ -86,8 +107,11 @@ const viewTitles = {
   contracts: "Contratos",
   expenses: "Despesas",
   payments: "Pagamentos",
+  "charge-checklist": "Checklist de encargos",
   "financial-erp": "ERP financeiro",
   reports: "Relatorios",
+  institutional: "Sobre e privacidade",
+  users: "Usuarios e perfis",
   settings: "Acesso e nuvem",
 };
 
@@ -150,8 +174,9 @@ function cacheOfflineUser(user) {
     appStorage.setItem(offlineUserKey, JSON.stringify({
       id: user.id || user.email,
       email: user.email || user.username || "",
-      username: user.email || user.username || "usuario@offline",
-      role: "admin",
+      name: getUserDisplayName(user),
+      username: getUserDisplayName(user),
+      role: resolveUserRole(user),
       cachedAt: new Date().toISOString(),
     }));
   } catch (error) {
@@ -174,9 +199,10 @@ function canUseCachedOfflineUser() {
 function activateOfflineSession(user = getCachedOfflineUser()) {
   if (!user) return false;
   appSessionStorage.setItem(sessionKey, "active");
+  document.body.classList.remove("locked");
   appSessionStorage.setItem(sessionUserKey, JSON.stringify({
     id: user.id || user.email || "offline-user",
-    username: user.email || user.username || "usuario@offline",
+    username: user.name || user.username || user.email || "Usuário offline",
     role: user.role || "admin",
     offline: true,
   }));
@@ -185,32 +211,41 @@ function activateOfflineSession(user = getCachedOfflineUser()) {
 
 document.addEventListener("DOMContentLoaded", async () => {
   const hasActiveScreenSession = appSessionStorage.getItem(sessionKey) === "active";
+  let canSyncOnBoot = false;
+
   if (!hasActiveScreenSession) {
     appSessionStorage.removeItem(sessionUserKey);
-    location.replace("login.html");
-    return;
-  }
-
-  if (!window.SupabaseSync && canUseCachedOfflineUser()) {
+    if (window.SupabaseSync) {
+      const user = await resolveSupabaseUser(2, 200);
+      if (user) {
+        cacheOfflineUser(user);
+        activateSupabaseSession(user);
+        canSyncOnBoot = navigator.onLine;
+      } else {
+        document.body.classList.add("locked");
+      }
+    } else {
+      document.body.classList.add("locked");
+    }
+  } else if (!window.SupabaseSync && canUseCachedOfflineUser()) {
     activateOfflineSession();
   } else if (!window.SupabaseSync) {
-    location.replace("login.html");
-    return;
-  }
-
-  const user = window.SupabaseSync ? await resolveSupabaseUser() : null;
-  if (!user) {
-    if (!activateOfflineSession()) {
-      location.replace("login.html");
-      return;
-    }
+    console.warn("Supabase nao carregou no boot. Mantendo a sessao local sem redirecionar.");
   } else {
-    cacheOfflineUser(user);
-    activateSupabaseSession(user);
+    const user = await resolveSupabaseUser();
+    if (user) {
+      cacheOfflineUser(user);
+      activateSupabaseSession(user);
+      canSyncOnBoot = navigator.onLine;
+    } else if (!activateOfflineSession()) {
+      appSessionStorage.removeItem(sessionKey);
+      appSessionStorage.removeItem(sessionUserKey);
+      document.body.classList.add("locked");
+    }
   }
 
   try {
-    if (window.SupabaseSync && navigator.onLine) {
+    if (canSyncOnBoot && window.SupabaseSync) {
       await reconcileCloudState();
       await window.SupabaseSync.flushPendingState?.();
     }
@@ -277,7 +312,7 @@ function loadState() {
 function saveLocalState(nextState = state) {
   try {
     appStorage.setItem(storageKey, JSON.stringify(nextState));
-  } catch (error) {
+  } catch {
     freeStorageForAuth();
     appStorage.setItem(storageKey, JSON.stringify(nextState));
   }
@@ -542,6 +577,7 @@ function downloadJsonFile(fileName, payload) {
 }
 
 async function reconcileCloudState() {
+  const hasStoredLocalState = Boolean(appStorage.getItem(storageKey));
   const localState = sanitizeRemoteState(state);
   const remote = await window.SupabaseSync.loadRemoteState({ fallbackToCache: false, includeMetadata: true });
 
@@ -555,7 +591,7 @@ async function reconcileCloudState() {
 
   const remoteState = sanitizeRemoteState(remote.state || remote);
   const remoteUpdatedAt = remote.updatedAt || null;
-  if (!isSmartphoneReadOnlyMode() && shouldPreferLocalState(localState, remoteState, remoteUpdatedAt)) {
+  if (hasStoredLocalState && !isSmartphoneReadOnlyMode() && shouldPreferLocalState(localState, remoteState, remoteUpdatedAt)) {
     state = localState;
     await saveRemoteStateNowAndTrack(state);
     return;
@@ -696,13 +732,16 @@ async function initializeAuth() {
   document.body.classList.toggle("locked", appSessionStorage.getItem(sessionKey) !== "active");
   const syncForm = document.getElementById("sync-form");
   if (syncForm) {
-    syncForm.elements.endpoint.value = syncConfig.endpoint || "";
-    syncForm.elements.token.value = syncConfig.token || "";
+    const endpointField = syncForm.elements.namedItem("endpoint");
+    const tokenField = syncForm.elements.namedItem("token");
+    if (endpointField) endpointField.value = syncConfig.endpoint || "";
+    if (tokenField) tokenField.value = syncConfig.token || "";
   }
   const accessForm = document.getElementById("access-form");
   if (accessForm) {
     accessForm.reset();
-    accessForm.elements.id.value = "";
+    const accessIdField = accessForm.elements.namedItem("id");
+    if (accessIdField) accessIdField.value = "";
   }
   updateSyncStatus();
 }
@@ -716,13 +755,56 @@ function uid(prefix) {
 }
 
 function bindNavigation() {
+  syncMobileShellCapability();
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.addEventListener("click", () => {
-      activateView(button.dataset.view, { showAccessAlert: true });
+      const activated = activateView(button.dataset.view, { showAccessAlert: true });
+      if (activated) collapseMobileShell();
     });
   });
+  document.getElementById("mobile-shell-toggle")?.addEventListener("click", toggleMobileShell);
+  window.addEventListener("resize", syncMobileShellCapability);
   const initialView = new URLSearchParams(location.search).get("view");
   if (initialView && document.getElementById(initialView)) activateView(initialView);
+}
+
+function isMobileShellEligible() {
+  const mobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator.userAgent || "");
+  const compactViewport = window.innerWidth <= 680 || (window.innerWidth <= 1100 && window.innerHeight <= 600);
+  return mobileDevice || compactViewport;
+}
+
+function syncMobileShellCapability() {
+  const eligible = isMobileShellEligible();
+  document.body.classList.toggle("mobile-layout-enabled", eligible);
+  if (!eligible) document.body.classList.remove("mobile-shell-collapsed");
+  updateMobileShellToggle();
+}
+
+function updateMobileShellToggle() {
+  const button = document.getElementById("mobile-shell-toggle");
+  if (!button) return;
+  const collapsed = document.body.classList.contains("mobile-shell-collapsed");
+  button.setAttribute("aria-expanded", String(!collapsed));
+  button.setAttribute("aria-label", collapsed ? "Mostrar menu superior" : "Ocultar menu superior");
+  const label = button.querySelector("strong");
+  if (label) label.textContent = collapsed ? "Mostrar menu" : "Ocultar menu";
+}
+
+function collapseMobileShell() {
+  if (!isMobileShellEligible()) return;
+  document.body.classList.add("mobile-shell-collapsed");
+  updateMobileShellToggle();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function toggleMobileShell() {
+  if (!isMobileShellEligible()) return;
+  document.body.classList.toggle("mobile-shell-collapsed");
+  updateMobileShellToggle();
+  if (!document.body.classList.contains("mobile-shell-collapsed")) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 }
 
 function bindConnectivityRecovery() {
@@ -805,6 +887,7 @@ function bindForms() {
     contractForm.elements[name]?.addEventListener("input", () => syncContractFinancialTermFields(contractForm));
     contractForm.elements[name]?.addEventListener("change", () => syncContractFinancialTermFields(contractForm));
   });
+  contractForm.elements.condoFeeResponsible?.addEventListener("change", () => syncContractCondoClientNameField(contractForm));
   contractForm.addEventListener("input", (event) => {
     if (event.target.closest(".contract-adjustment-row")) syncContractFinancialTermFields(contractForm);
   });
@@ -883,15 +966,34 @@ function bindForms() {
     event.preventDefault();
     await updateAccess(event.currentTarget);
   });
+  document.getElementById("access-users-body")?.addEventListener("change", async (event) => {
+    const select = event.target.closest("[data-access-role]");
+    if (!select) return;
+    await editAccessUser(select.dataset.accessRole, select.value);
+  });
+  document.getElementById("access-refresh")?.addEventListener("click", () => loadAccessUsers(true));
 
   document.getElementById("sync-form").addEventListener("submit", (event) => {
     event.preventDefault();
     updateSyncConfig(event.currentTarget);
   });
 
-  ["report-dataset", "report-property", "report-client", "report-status", "report-expense-type", "report-start", "report-end", "report-min-value", "report-max-value"].forEach((id) => {
+  ["report-dataset", "report-property", "report-client", "report-status", "report-expense-type", "report-include-revenue", "report-include-expenses", "report-expense-view", "report-start", "report-end", "report-min-value", "report-max-value"].forEach((id) => {
     document.getElementById(id).addEventListener("input", renderReports);
     document.getElementById(id).addEventListener("change", renderReports);
+  });
+
+  ["charge-checklist-property", "charge-checklist-client", "charge-checklist-responsible", "charge-checklist-status", "charge-checklist-start", "charge-checklist-end"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("input", renderChargeChecklist);
+    document.getElementById(id)?.addEventListener("change", renderChargeChecklist);
+  });
+  document.getElementById("charge-checklist-body")?.addEventListener("change", (event) => {
+    if (event.target.matches("[data-charge-paid]")) {
+      toggleChargeConfirmation(event.target.dataset.chargePaid, event.target.checked);
+    }
+    if (event.target.matches("[data-charge-payment-date]")) {
+      updateChargeConfirmationPaymentDate(event.target.dataset.chargePaymentDate, event.target.value);
+    }
   });
 
   setupErpPeriodFilters();
@@ -899,6 +1001,7 @@ function bindForms() {
     document.getElementById(id).addEventListener("input", renderFinancialErp);
     document.getElementById(id).addEventListener("change", renderFinancialErp);
   });
+  setupExportSelectionControls();
 
   [
     "expense-history-property",
@@ -907,12 +1010,19 @@ function bindForms() {
     "payment-history-property",
     "payment-history-start",
     "payment-history-end",
+    "missing-payment-property",
+    "missing-payment-start",
+    "missing-payment-end",
   ].forEach((id) => {
     document.getElementById(id)?.addEventListener("input", renderFinancialLaunches);
     document.getElementById(id)?.addEventListener("change", renderFinancialLaunches);
   });
   document.getElementById("expense-history-clear")?.addEventListener("click", () => clearFinancialLaunchFilters("expense"));
   document.getElementById("payment-history-clear")?.addEventListener("click", () => clearFinancialLaunchFilters("payment"));
+  document.getElementById("missing-payment-clear")?.addEventListener("click", () => {
+    setDefaultMissingPaymentPeriod(true);
+    renderMissingPayments();
+  });
 
   ["audit-start", "audit-end"].forEach((id) => {
     document.getElementById(id)?.addEventListener("input", renderAuditLogs);
@@ -1056,7 +1166,7 @@ async function login(form) {
     if (!user) throw new Error("Sessao Supabase nao retornada.");
     cacheOfflineUser(user);
     activateSupabaseSession(user);
-    addAuditLog("login_success", "auth", user.id, null, { username: user.email || email, role: "admin" }, false);
+    addAuditLog("login_success", "auth", user.id, null, { username: user.email || email, role: resolveUserRole(user) }, false);
     form.reset();
     setText("login-message", "");
     renderAll();
@@ -1069,31 +1179,61 @@ async function login(form) {
 async function logout() {
   const user = getCurrentUser();
   if (user) addAuditLog("logout", "auth", user.id, null, { username: user.username }, false);
-  if (window.SupabaseSync) await window.SupabaseSync.signOut();
-  appSessionStorage.removeItem(sessionKey);
-  appSessionStorage.removeItem(sessionUserKey);
-  if (window.SupabaseSync) {
-    location.replace("login.html");
-    return;
+  try {
+    if (window.SupabaseSync) await window.SupabaseSync.signOut();
+  } catch (error) {
+    console.warn("A sessão local foi encerrada, mas o Supabase não confirmou a saída:", error);
+  } finally {
+    appSessionStorage.removeItem(sessionKey);
+    appSessionStorage.removeItem(sessionUserKey);
+    document.body.classList.add("locked");
   }
-  document.body.classList.add("locked");
 }
 
 function activateSupabaseSession(user) {
   const email = user.email || "usuario@supabase";
+  const role = resolveUserRole(user);
+  const displayName = getUserDisplayName(user);
   cacheOfflineUser(user);
   appSessionStorage.setItem(sessionKey, "active");
+  document.body.classList.remove("locked");
   appSessionStorage.setItem(sessionUserKey, JSON.stringify({
     id: user.id,
-    username: email,
-    role: "admin",
+    username: displayName,
+    email,
+    role,
   }));
 }
 
 async function updateAccess(form) {
-  form?.reset();
-  purgeLocalAccessUsers();
-  setText("settings-message", "As senhas locais foram removidas. Gerencie usuarios e senhas diretamente no Supabase.");
+  if (!canManageUsers()) {
+    alert("Apenas administradores podem convidar usuários.");
+    return;
+  }
+  if (!window.SupabaseSync?.inviteAccessUser) {
+    setText("access-message", "A função de usuários ainda não foi publicada no Supabase.");
+    return;
+  }
+  const record = Object.fromEntries(new FormData(form).entries());
+  const button = form.querySelector("button[type='submit']");
+  button.disabled = true;
+  setText("access-message", "Enviando convite com segurança...");
+  try {
+    const invited = await window.SupabaseSync.inviteAccessUser({
+      name: String(record.name || "").trim(),
+      email: String(record.email || "").trim(),
+      role: record.role,
+      redirectTo: "https://gestao-locacoes-opal.vercel.app/login.html",
+    });
+    addAuditLog("user_invited", "auth", invited.user?.user_id || "", null, { username: record.email, role: record.role }, false);
+    form.reset();
+    await loadAccessUsers(true);
+    setText("access-message", "Convite enviado. O usuário receberá um e-mail para definir o acesso.");
+  } catch (error) {
+    setText("access-message", `Não foi possível enviar o convite: ${error.message || error}`);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function updateSyncConfig(form) {
@@ -1286,6 +1426,7 @@ function normalizeContract(record) {
     gracePeriodMonths: hasGracePeriod ? Math.max(0, Math.floor(Number(record.gracePeriodMonths || 0))) : 0,
     ...adjustedRent,
     condoFeeResponsible: record.condoFeeResponsible || "cliente",
+    condoFeeInClientName: (record.condoFeeResponsible || "cliente") === "cliente" && (record.condoFeeInClientName === "on" || record.condoFeeInClientName === true),
     iptuResponsible: record.iptuResponsible || "cliente",
     spuResponsible: record.spuResponsible || "cliente",
     fireFeeResponsible: record.fireFeeResponsible || "cliente",
@@ -1321,6 +1462,20 @@ function syncContractFinancialTermFields(form = document.getElementById("contrac
   }
   if (!enabled) renderContractAdjustmentRows(form, []);
   syncContractRentAdjustmentsInput(form);
+  syncContractCondoClientNameField(form);
+}
+
+function syncContractCondoClientNameField(form = document.getElementById("contract-form")) {
+  if (!form) return;
+  const responsible = form.elements.condoFeeResponsible;
+  const checkbox = form.elements.condoFeeInClientName;
+  const wrapper = checkbox?.closest(".condo-client-name-option");
+  const enabled = responsible?.value === "cliente";
+  if (checkbox) {
+    checkbox.disabled = !enabled;
+    if (!enabled) checkbox.checked = false;
+  }
+  wrapper?.classList.toggle("hidden", !enabled);
 }
 
 function addContractAdjustmentRow(form, adjustment = {}) {
@@ -1862,7 +2017,23 @@ function sanitizeRemoteState(remoteState) {
     contracts: Array.isArray(remoteState.contracts) ? remoteState.contracts.map(normalizeContract) : [],
     expenses: Array.isArray(remoteState.expenses) ? remoteState.expenses.map(normalizeStoredExpense) : [],
     payments: Array.isArray(remoteState.payments) ? remoteState.payments.map(normalizeStoredPayment) : [],
+    chargeConfirmations: Array.isArray(remoteState.chargeConfirmations) ? remoteState.chargeConfirmations.map(normalizeChargeConfirmation) : [],
     auditLogs: Array.isArray(remoteState.auditLogs) ? remoteState.auditLogs : [],
+  };
+}
+
+function normalizeChargeConfirmation(record) {
+  return {
+    ...record,
+    id: record.id || getChargeConfirmationId(record.contractId, record.chargeKey, record.dueDate),
+    contractId: record.contractId || "",
+    chargeKey: record.chargeKey || "",
+    dueDate: record.dueDate || "",
+    paymentDate: record.paymentDate || "",
+    confirmed: Boolean(record.confirmed),
+    confirmedAt: record.confirmedAt || "",
+    confirmedByUserId: record.confirmedByUserId || "",
+    confirmedByUserName: record.confirmedByUserName || "",
   };
 }
 
@@ -1927,18 +2098,76 @@ function updateSyncStatus() {
 }
 
 
+function normalizeRole(role) {
+  const value = String(role || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const aliases = {
+    administrador: "admin",
+    administrator: "admin",
+    proprietario: "admin",
+    owner: "admin",
+    master: "admin",
+    financial: "financeiro",
+    operational: "operacional",
+    operador: "operacional",
+    viewer: "consulta",
+    leitura: "consulta",
+  };
+  return aliases[value] || value || "consulta";
+}
+
+function resolveUserRole(user) {
+  const candidates = [
+    user?.app_metadata?.role,
+    user?.user_metadata?.role,
+    user?.role,
+    user?.appAccessProfile?.role,
+  ].map(normalizeRole);
+  if (candidates.includes("admin")) return "admin";
+  return normalizeRole(
+    user?.appAccessProfile?.role ||
+    user?.app_metadata?.role ||
+    user?.user_metadata?.role ||
+    user?.role
+  );
+}
+
+function getUserDisplayName(user) {
+  const explicitName = String(
+    user?.appAccessProfile?.name ||
+    user?.user_metadata?.name ||
+    user?.user_metadata?.full_name ||
+    user?.name ||
+    ""
+  ).trim();
+  if (explicitName) return explicitName;
+
+  const email = String(user?.email || user?.username || "").trim();
+  const localPart = email.split("@")[0].replace(/[._-]+/g, " ").trim();
+  if (localPart) return localPart.replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase("pt-BR"));
+  return "Usuário";
+}
+
 function getCurrentUser() {
   try {
-    return JSON.parse(appSessionStorage.getItem(sessionUserKey));
+    const user = JSON.parse(appSessionStorage.getItem(sessionUserKey));
+    if (!user) return null;
+    return { ...user, role: normalizeRole(user.role) };
   } catch {
     return null;
   }
 }
 
+function canManageUsers() {
+  return normalizeRole(getCurrentUser()?.role) === "admin";
+}
+
 function isSmartphoneReadOnlyMode() {
-  const mobileViewport = window.matchMedia?.("(max-width: 760px)")?.matches;
   const mobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator.userAgent || "");
-  return Boolean(mobileViewport || mobileDevice);
+  return Boolean(mobileDevice);
 }
 
 function isWritePermission(permission) {
@@ -1960,6 +2189,7 @@ function requirePermission(permission, message) {
 
 function canAccessView(view) {
   if (view === "settings") return hasPermission("admin:write");
+  if (view === "users") return hasPermission("view");
   return hasPermission("view");
 }
 
@@ -1972,7 +2202,7 @@ function canDeleteRecords() {
 }
 
 function isFinancialCollection(collection) {
-  return ["contracts", "expenses", "payments"].includes(collection);
+  return ["contracts", "expenses", "payments", "chargeConfirmations"].includes(collection);
 }
 
 function applyPermissionUi() {
@@ -1983,6 +2213,9 @@ function applyPermissionUi() {
   document.querySelectorAll("[data-view='settings']").forEach((item) => {
     item.hidden = !hasPermission("admin:write");
   });
+  document.querySelectorAll("[data-view='users']").forEach((item) => {
+    item.hidden = !user;
+  });
   document.getElementById("clear-data")?.toggleAttribute("hidden", !hasPermission("admin:write"));
 
   setFormWriteState("property-form", canWriteCollection("properties"));
@@ -1990,6 +2223,7 @@ function applyPermissionUi() {
   setFormWriteState("contract-form", canWriteCollection("contracts"));
   setFormWriteState("expense-form", canWriteCollection("expenses"));
   setFormWriteState("payment-form", canWriteCollection("payments"));
+  setFormWriteState("access-form", canManageUsers());
 }
 
 function setFormWriteState(formId, enabled) {
@@ -2009,6 +2243,8 @@ function renderAll() {
   renderContracts();
   renderExpenses();
   renderPayments();
+  renderMissingPayments();
+  renderChargeChecklist();
   renderFinancialErp();
   renderReports();
   renderAccessUsers();
@@ -2110,39 +2346,62 @@ function scheduleChargeConfirmationReminder() {
 function getClientChargeConfirmationsDue(daysAfterDue) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return state.contracts
-    .filter((contract) => getContractStatus(contract).key !== "expired")
-    .flatMap((contract) => {
-      const property = findProperty(contract.propertyId);
-      const client = findClient(contract.clientId);
-      return chargeRules
-        .filter((rule) => (contract[rule.key] || "cliente") === "cliente")
-        .map((rule) => {
-          const dueDate = adjustToPreviousBusinessDay(getMostRecentChargeDueDate(rule, today));
-          const elapsedDays = daysBetweenDates(dueDate, today);
-          return {
-            contract,
-            property,
-            client,
-            rule,
-            dueDate,
-            elapsedDays,
-          };
-        });
-    })
-    .filter((item) => item.elapsedDays >= daysAfterDue && item.elapsedDays <= daysAfterDue + 10)
+  return getChargeChecklistRows(today)
+    .filter((item) => !item.confirmed)
+    .filter((item) => !isChargeReminderExcludedProperty(item.property))
+    .filter((item) => item.elapsedDays >= daysAfterDue)
     .sort((a, b) => b.elapsedDays - a.elapsedDays);
 }
 
 function showChargeConfirmationReminder(pendingCharges) {
-  const visibleRows = pendingCharges.slice(0, 8).map((item) => {
-    const property = item.property?.description || "Imovel nao localizado";
-    const client = item.client?.name || "Cliente nao localizado";
-    return `- ${item.rule.label} | ${property} | ${client} | venceu em ${formatDate(toIsoDate(item.dueDate))}`;
-  });
+  const visibleRows = pendingCharges.slice(0, 12);
   const extraCount = pendingCharges.length - visibleRows.length;
-  const extraText = extraCount > 0 ? `\n\nE mais ${extraCount} encargo(s). Consulte o relatorio de encargos.` : "";
-  alert(`Confirmar pagamento: ${pendingCharges.length} imposto(s) ou taxa(s) sob responsabilidade do cliente venceram ha 5 dias ou mais.\n\nConfira se foram pagos de fato:\n${visibleRows.join("\n")}${extraText}`);
+  const modal = document.createElement("div");
+  modal.className = "charge-alert-modal";
+  modal.innerHTML = `
+    <div class="charge-alert-dialog" role="dialog" aria-modal="true" aria-label="Alertas de encargos">
+      <div class="charge-alert-header">
+        <div>
+          <span class="eyebrow">Impostos e taxas</span>
+          <h3>${pendingCharges.length} encargo(s) aguardam confirmacao</h3>
+        </div>
+        <button class="icon-button" data-close-charge-alert type="button" aria-label="Fechar">x</button>
+      </div>
+      <p class="charge-alert-copy">Estes vencimentos passaram de 5 dias e ainda nao possuem confirmacao de pagamento.</p>
+      <div class="charge-alert-list">
+        ${visibleRows.map((item) => `
+          <article class="charge-alert-row">
+            <strong>${escapeHtml(item.property)}</strong>
+            <span>${escapeHtml(item.client)}</span>
+            <span>${escapeHtml(item.charge)}</span>
+            <span>${escapeHtml(formatChargeResponsible(item.responsible))}</span>
+            <span>${formatDate(item.dueDate)}</span>
+            <span>${item.elapsedDays} dia(s)</span>
+          </article>
+        `).join("")}
+      </div>
+      ${extraCount > 0 ? `<p class="charge-alert-copy">Mais ${extraCount} encargo(s) aparecem no checklist.</p>` : ""}
+      <div class="charge-alert-actions">
+        <button class="ghost-button" data-close-charge-alert type="button">Agora nao</button>
+        <button class="primary-button" data-open-charge-checklist type="button">Abrir checklist</button>
+      </div>
+    </div>
+  `;
+  const closeModal = () => modal.remove();
+  modal.querySelectorAll("[data-close-charge-alert]").forEach((button) => button.addEventListener("click", closeModal));
+  modal.querySelector("[data-open-charge-checklist]")?.addEventListener("click", () => {
+    closeModal();
+    activateView("charge-checklist");
+  });
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) closeModal();
+  });
+  document.body.appendChild(modal);
+}
+
+function isChargeReminderExcludedProperty(propertyName) {
+  const normalized = String(propertyName || "").trim().toLowerCase();
+  return normalized === "lra" || normalized === "lra2";
 }
 
 function getMostRecentChargeDueDate(rule, referenceDate = new Date()) {
@@ -2172,8 +2431,11 @@ function populateSelects() {
   populateSelect(document.querySelector("#contract-form [name='clientId']"), state.clients, "Selecione o cliente", "name");
   populateSelect(document.getElementById("report-property"), state.properties, "Todos os imoveis", "description", true);
   populateSelect(document.getElementById("report-client"), state.clients, "Todos os clientes", "name", true);
+  populateSelect(document.getElementById("charge-checklist-property"), state.properties, "Todos os imoveis", "description", true);
+  populateSelect(document.getElementById("charge-checklist-client"), state.clients, "Todos os clientes", "name", true);
   populateSelect(document.getElementById("expense-history-property"), state.properties, "Todos os imoveis", "description", true);
   populateSelect(document.getElementById("payment-history-property"), state.properties, "Todos os imoveis", "description", true);
+  populateSelect(document.getElementById("missing-payment-property"), getPropertiesWithAnyContracts(), "Todos os imoveis", "description", true);
   updatePaymentContractInfo();
   updateExpenseContractInfo();
 }
@@ -2256,6 +2518,7 @@ function renderDashboard() {
 function renderAppVersionInfo() {
   const deployedAt = isValidDateTime(appMetadata.deployedAt) ? appMetadata.deployedAt : appDeployedAt;
   setText("metric-app-version", appMetadata.version || appVersion);
+  setText("institutional-app-version", appMetadata.version || appVersion);
   setText("metric-app-updated", isValidDateTime(deployedAt) ? formatDateTime(deployedAt).replace(",", "") : "Data indisponivel");
 }
 
@@ -2639,11 +2902,21 @@ function bindFinancialCompetenceFields(form, dateFieldName, afterDateChange) {
 function syncFinancialCompetence(form, dateFieldName, options = {}) {
   if (!form?.elements.competence) return;
   const input = form.elements.competence;
-  const suggested = normalizeCompetence("", form.elements[dateFieldName]?.value || getFinancialReferenceDate());
+  const suggested = getSuggestedFinancialCompetence(dateFieldName, form.elements[dateFieldName]?.value || getFinancialReferenceDate());
   const overwrite = options.overwrite ?? (!input.value || input.dataset.autoCompetence === "true");
   if (!overwrite && input.value) return;
   input.value = suggested;
   input.dataset.autoCompetence = "true";
+}
+
+function getSuggestedFinancialCompetence(dateFieldName, referenceDate) {
+  const reference = referenceDate instanceof Date ? new Date(referenceDate) : parseDate(referenceDate);
+  if (dateFieldName === "paymentDate" && reference) {
+    reference.setDate(1);
+    reference.setMonth(reference.getMonth() - 1);
+    return toMonthValue(reference);
+  }
+  return normalizeCompetence("", reference || getFinancialReferenceDate());
 }
 
 function getFinancialLaunchCategory(collectionName, record) {
@@ -2828,9 +3101,378 @@ function renderPayments() {
   );
 }
 
+function renderChargeChecklist() {
+  const rows = getChargeChecklistRows();
+  const visibleRows = filterChargeChecklistRows(rows);
+  const pendingCount = rows.filter((row) => !row.confirmed).length;
+  const overdueCount = rows.filter((row) => !row.confirmed && row.elapsedDays > 0).length;
+  setText("charge-checklist-count", `${pendingCount} pendente(s), ${overdueCount} vencido(s)`);
+
+  renderTable(
+    "charge-checklist-body",
+    visibleRows,
+    (row) => `
+      <td>
+        <input class="charge-paid-checkbox" type="checkbox" data-charge-paid="${escapeHtml(row.confirmationId)}" ${row.confirmed ? "checked" : ""} />
+      </td>
+      <td>${escapeHtml(row.property)}</td>
+      <td>
+        <strong class="charge-client-name">${escapeHtml(row.client)}</strong>
+        <span class="mini-line">${escapeHtml(row.clientContact || "Contato nao informado")}</span>
+      </td>
+      <td>${escapeHtml(row.charge)}</td>
+      <td>${escapeHtml(formatChargeResponsible(row.responsible))}</td>
+      <td>${formatDate(row.dueDate)}</td>
+      <td>
+        <input class="table-date-input" type="date" data-charge-payment-date="${escapeHtml(row.confirmationId)}" value="${escapeHtml(row.paymentDate || "")}" ${row.confirmed ? "" : "disabled"} />
+      </td>
+      <td>${escapeHtml(row.confirmedBy || "-")}</td>
+    `,
+  );
+}
+
+function getChargeChecklistRows(referenceDate = new Date()) {
+  const today = new Date(referenceDate);
+  today.setHours(0, 0, 0, 0);
+  const period = getChargeChecklistDateRange(today);
+  const contractRows = state.contracts
+    .filter((contract) => getContractStatus(contract).key !== "expired")
+    .flatMap((contract) => {
+      const property = findProperty(contract.propertyId);
+      if (isChargeReminderExcludedProperty(property?.description)) return [];
+      const client = findClient(contract.clientId);
+      return chargeRules.flatMap((rule) => {
+        if (isChargeAlreadyInClientName(contract, rule)) return [];
+        const dueDates = period.hasCustomPeriod
+          ? getChargeDueDatesInRange(rule, period.startDate, period.endDate)
+          : [adjustToPreviousBusinessDay(getMostRecentChargeDueDate(rule, today))].filter((dueDate) => dueDate >= period.startDate);
+        const contractDueDates = dueDates.filter((dueDate) => isChargeDueDateInsideContract(dueDate, contract));
+        return contractDueDates.map((dueDateValue) => {
+          const dueDate = toIsoDate(dueDateValue);
+          const confirmationId = getChargeConfirmationId(contract.id, rule.key, dueDate);
+          const confirmation = getChargeConfirmation(confirmationId);
+          return {
+            confirmationId,
+            contractId: contract.id,
+            propertyId: contract.propertyId,
+            clientId: contract.clientId,
+            property: property?.description || "-",
+            client: client?.name || "-",
+            clientContact: client?.contact || client?.phone || client?.email || "",
+            charge: rule.label,
+            chargeKey: rule.key,
+            responsible: contract[rule.key] || "cliente",
+            dueDate,
+            elapsedDays: daysBetweenDates(parseDate(dueDate), today),
+            confirmed: Boolean(confirmation?.confirmed),
+            paymentDate: confirmation?.paymentDate || "",
+            confirmedBy: confirmation?.confirmedByUserName || "",
+          };
+        });
+      });
+    });
+  return [
+    ...contractRows,
+    ...getOwnUseChargeChecklistRows(period, today),
+  ]
+    .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)) || a.property.localeCompare(b.property));
+}
+
+function getOwnUseChargeChecklistRows(period, today) {
+  return state.properties
+    .filter(isPropertyExcludedFromOccupancy)
+    .filter((property) => !isChargeReminderExcludedProperty(property?.description))
+    .flatMap((property) => chargeRules.flatMap((rule) => {
+      const dueDates = period.hasCustomPeriod
+        ? getChargeDueDatesInRange(rule, period.startDate, period.endDate)
+        : [adjustToPreviousBusinessDay(getMostRecentChargeDueDate(rule, today))].filter((dueDate) => dueDate >= period.startDate);
+      return dueDates.map((dueDateValue) => {
+        const dueDate = toIsoDate(dueDateValue);
+        const confirmationId = getChargeConfirmationId(`own-use-${property.id}`, rule.key, dueDate);
+        const confirmation = getChargeConfirmation(confirmationId);
+        return {
+          confirmationId,
+          contractId: "",
+          propertyId: property.id,
+          clientId: "own-use",
+          property: property.description || "-",
+          client: "Uso proprio",
+          clientContact: "",
+          charge: rule.label,
+          chargeKey: rule.key,
+          responsible: "locador",
+          dueDate,
+          elapsedDays: daysBetweenDates(parseDate(dueDate), today),
+          confirmed: Boolean(confirmation?.confirmed),
+          paymentDate: confirmation?.paymentDate || "",
+          confirmedBy: confirmation?.confirmedByUserName || "",
+        };
+      });
+    }));
+}
+
+function isChargeAlreadyInClientName(contract, rule) {
+  return rule.key === "condoFeeResponsible"
+    && (contract.condoFeeResponsible || "cliente") === "cliente"
+    && Boolean(contract.condoFeeInClientName);
+}
+
+function isChargeDueDateInsideContract(dueDate, contract) {
+  const contractStart = parseDate(contract.startDate);
+  const contractEnd = parseDate(contract.endDate);
+  return (!contractStart || dueDate >= contractStart) && (!contractEnd || dueDate <= contractEnd);
+}
+
+function getChargeChecklistDateRange(referenceDate = new Date()) {
+  const startInput = document.getElementById("charge-checklist-start")?.value || "";
+  const endInput = document.getElementById("charge-checklist-end")?.value || "";
+  const monitoringStart = parseDate(chargeMonitoringStartDateValue);
+  const requestedStart = parseDate(startInput);
+  const requestedEnd = parseDate(endInput);
+  const endDate = requestedEnd || referenceDate;
+  endDate.setHours(0, 0, 0, 0);
+  const startDate = requestedStart && requestedStart > monitoringStart ? requestedStart : monitoringStart;
+  startDate.setHours(0, 0, 0, 0);
+  return {
+    startDate,
+    endDate: endDate < startDate ? startDate : endDate,
+    hasCustomPeriod: Boolean(startInput || endInput),
+  };
+}
+
+function getChargeDueDatesInRange(rule, startDate, endDate) {
+  const rows = [];
+  if (rule.kind === "monthly") {
+    const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), rule.day);
+    if (cursor < startDate) cursor.setMonth(cursor.getMonth() + 1);
+    while (cursor <= endDate) {
+      const adjusted = adjustToPreviousBusinessDay(cursor);
+      if (adjusted >= startDate && adjusted <= endDate) rows.push(new Date(adjusted));
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    return rows;
+  }
+  for (let year = startDate.getFullYear(); year <= endDate.getFullYear(); year += 1) {
+    const dueDate = adjustToPreviousBusinessDay(new Date(year, rule.month, rule.day));
+    if (dueDate >= startDate && dueDate <= endDate) rows.push(dueDate);
+  }
+  return rows;
+}
+
+function filterChargeChecklistRows(rows) {
+  const propertyId = document.getElementById("charge-checklist-property")?.value || "all";
+  const clientId = document.getElementById("charge-checklist-client")?.value || "all";
+  const responsible = document.getElementById("charge-checklist-responsible")?.value || "all";
+  const status = document.getElementById("charge-checklist-status")?.value || "pending";
+  return rows
+    .filter((row) => propertyId === "all" || row.propertyId === propertyId)
+    .filter((row) => clientId === "all" || row.clientId === clientId)
+    .filter((row) => responsible === "all" || row.responsible === responsible)
+    .filter((row) => {
+      if (status === "confirmed") return row.confirmed;
+      if (status === "overdue") return !row.confirmed && row.elapsedDays > 0;
+      if (status === "pending") return !row.confirmed;
+      return true;
+    });
+}
+
+function getChargeConfirmationId(contractId, chargeKey, dueDate) {
+  return `${contractId || "contract"}::${chargeKey || "charge"}::${dueDate || "date"}`;
+}
+
+function getChargeConfirmation(confirmationId) {
+  return (state.chargeConfirmations || []).find((item) => item.id === confirmationId);
+}
+
+function toggleChargeConfirmation(confirmationId, confirmed) {
+  if (!requirePermission("financial:write", "Seu perfil nao permite confirmar pagamentos.")) {
+    renderChargeChecklist();
+    return;
+  }
+  const row = getChargeChecklistRows().find((item) => item.confirmationId === confirmationId);
+  if (!row) return;
+  const user = getCurrentUser();
+  const before = getChargeConfirmation(confirmationId) || null;
+  const next = {
+    ...(before || {}),
+    id: confirmationId,
+    contractId: row.contractId,
+    chargeKey: row.chargeKey,
+    dueDate: row.dueDate,
+    paymentDate: confirmed ? (before?.paymentDate || toIsoDate(new Date())) : "",
+    confirmed,
+    confirmedAt: confirmed ? new Date().toISOString() : "",
+    confirmedByUserId: confirmed ? (user?.id || "system") : "",
+    confirmedByUserName: confirmed ? (user?.username || "Sistema") : "",
+  };
+  upsertChargeConfirmation(before, next, row);
+}
+
+function updateChargeConfirmationPaymentDate(confirmationId, paymentDate) {
+  if (!requirePermission("financial:write", "Seu perfil nao permite alterar confirmacoes.")) {
+    renderChargeChecklist();
+    return;
+  }
+  const row = getChargeChecklistRows().find((item) => item.confirmationId === confirmationId);
+  const before = getChargeConfirmation(confirmationId);
+  if (!row || !before?.confirmed) return;
+  upsertChargeConfirmation(before, { ...before, paymentDate }, row);
+}
+
+function upsertChargeConfirmation(before, next, row) {
+  const index = (state.chargeConfirmations || []).findIndex((item) => item.id === next.id);
+  state.chargeConfirmations = state.chargeConfirmations || [];
+  if (index >= 0) state.chargeConfirmations[index] = next;
+  else state.chargeConfirmations.push(next);
+  addAuditLog(
+    before ? "charge_confirmation_updated" : "charge_confirmation_created",
+    "chargeConfirmations",
+    next.id,
+    before,
+    { ...next, message: `${row.charge} - ${row.property} - ${formatChargeResponsible(row.responsible)}` },
+    true,
+  );
+  saveState();
+  renderAll();
+}
+
+function formatChargeResponsible(value) {
+  return value === "locador" ? "Imobiliaria" : "Cliente";
+}
+
 function renderFinancialLaunches() {
   renderExpenses();
   renderPayments();
+  renderMissingPayments();
+}
+
+function setDefaultMissingPaymentPeriod(overwrite = false) {
+  const startInput = document.getElementById("missing-payment-start");
+  const endInput = document.getElementById("missing-payment-end");
+  if (!startInput || !endInput) return;
+  const period = getDefaultMissingPaymentPeriod();
+  if (overwrite || !startInput.value) startInput.value = period.startCompetence;
+  if (overwrite || !endInput.value) endInput.value = period.endCompetence;
+  if (overwrite) {
+    const propertyInput = document.getElementById("missing-payment-property");
+    if (propertyInput) propertyInput.value = "all";
+  }
+}
+
+function getDefaultMissingPaymentPeriod(reference = getFinancialReferenceDate()) {
+  const end = new Date(reference.getFullYear(), reference.getMonth() - 1, 1);
+  const start = new Date(end.getFullYear(), 0, 1);
+  if (start > end) start.setFullYear(start.getFullYear() - 1);
+  return { startCompetence: toMonthValue(start), endCompetence: toMonthValue(end) };
+}
+
+function getMissingPaymentCompetences(contracts, payments, filters) {
+  const start = parseCompetence(filters.startCompetence);
+  const end = parseCompetence(filters.endCompetence);
+  if (!start || !end || start > end) return [];
+
+  const paymentKeys = new Set(payments.map((payment) => {
+    const competence = getFinancialLaunchCompetence("payments", payment);
+    return `${payment.contractId || ""}:${payment.propertyId || ""}:${competence}`;
+  }));
+
+  return listMonths(start, end)
+    .flatMap((month) => contracts
+      .filter((contract) => filters.propertyId === "all" || contract.propertyId === filters.propertyId)
+      .filter((contract) => contractOverlapsPeriod(
+        contract,
+        firstDayOfMonth(month),
+        new Date(month.getFullYear(), month.getMonth() + 1, 0),
+      ))
+      .filter((contract) => !isContractMonthInGracePeriod(contract, month))
+      .filter((contract) => !paymentKeys.has(`${contract.id || ""}:${contract.propertyId || ""}:${toMonthValue(month)}`))
+      .map((contract) => ({ contract, competence: toMonthValue(month) })))
+    .sort((left, right) => right.competence.localeCompare(left.competence)
+      || String(findProperty(left.contract.propertyId)?.description || "").localeCompare(String(findProperty(right.contract.propertyId)?.description || "")));
+}
+
+function renderMissingPayments() {
+  const body = document.getElementById("missing-payments-body");
+  if (!body) return;
+  setDefaultMissingPaymentPeriod();
+  const filters = {
+    propertyId: document.getElementById("missing-payment-property")?.value || "all",
+    startCompetence: document.getElementById("missing-payment-start")?.value || "",
+    endCompetence: document.getElementById("missing-payment-end")?.value || "",
+  };
+  const start = parseCompetence(filters.startCompetence);
+  const end = parseCompetence(filters.endCompetence);
+  const message = document.getElementById("missing-payments-message");
+  if (!start || !end || start > end) {
+    setText("missing-payments-caption", "Periodo invalido");
+    if (message) message.textContent = "A competencia inicial deve ser anterior ou igual a competencia final.";
+    renderTable("missing-payments-body", [], () => "");
+    return;
+  }
+  if (message) message.textContent = "";
+  const rows = getMissingPaymentCompetences(state.contracts, state.payments, filters);
+  const propertyLabel = filters.propertyId === "all" ? "todos os imoveis" : (findProperty(filters.propertyId)?.description || "imovel selecionado");
+  setText("missing-payments-caption", `${rows.length} pendencia(s) - ${formatCompetence(filters.startCompetence)} a ${formatCompetence(filters.endCompetence)} - ${propertyLabel}`);
+  updateMissingPaymentIndicators();
+  renderTable("missing-payments-body", rows, ({ contract, competence }) => {
+    const property = findProperty(contract.propertyId);
+    const client = findClient(contract.clientId);
+    return `
+      <td><span class="status ${parseCompetence(competence) < firstDayOfMonth(getFinancialReferenceDate()) ? "overdue" : "open"}">${formatCompetence(competence)}</span></td>
+      <td>${escapeHtml(property?.description || "-")}</td>
+      <td>${escapeHtml(getContractCode(contract) || "-")}</td>
+      <td>${escapeHtml(client?.name || "-")}</td>
+      <td>${formatDate(contract.startDate)} a ${formatDate(contract.endDate)}</td>
+      <td>${formatMoney(getContractMonthlyValueForCompetence(contract, parseCompetence(competence)))}</td>
+      <td><button class="small-button" data-missing-contract="${escapeHtml(contract.id)}" data-missing-competence="${escapeHtml(competence)}" type="button">Lancar receita</button></td>
+    `;
+  });
+}
+
+function updateMissingPaymentIndicators() {
+  const period = getDefaultMissingPaymentPeriod();
+  const count = getMissingPaymentCompetences(state.contracts, state.payments, { propertyId: "all", ...period }).length;
+  setText("metric-missing-payments", count);
+  const badge = document.getElementById("missing-payments-nav-badge");
+  if (badge) {
+    badge.textContent = String(count);
+    badge.classList.toggle("hidden", count === 0);
+    badge.setAttribute("aria-label", `${count} competencia(s) sem receita`);
+  }
+}
+
+function getPaymentDateForCompetence(contract, competence) {
+  const month = parseCompetence(competence);
+  if (!month) return toDateInputValue(getFinancialReferenceDate());
+  const paymentMonth = new Date(month.getFullYear(), month.getMonth() + 1, 1);
+  const lastDay = new Date(paymentMonth.getFullYear(), paymentMonth.getMonth() + 1, 0).getDate();
+  paymentMonth.setDate(Math.min(Math.max(Number(contract?.dueDay || 1), 1), lastDay));
+  return toDateInputValue(paymentMonth);
+}
+
+function startMissingPaymentLaunch(contractId, competence) {
+  if (!canWriteCollection("payments")) {
+    alert("Seu perfil nao permite lancar receitas.");
+    return;
+  }
+  const contract = state.contracts.find((item) => item.id === contractId);
+  const form = document.getElementById("payment-form");
+  if (!contract || !form) return;
+  activateView("payments");
+  form.reset();
+  form.elements.id.value = "";
+  form.elements.paymentDate.value = getPaymentDateForCompetence(contract, competence);
+  form.elements.competence.value = competence;
+  form.elements.competence.dataset.autoCompetence = "false";
+  form.elements.propertyId.value = contract.propertyId;
+  form.elements.contractId.value = contract.id;
+  updatePaymentContractInfo(form);
+  form.elements.amount.value = formatMoneyInputValue(getContractMonthlyValueForCompetence(contract, parseCompetence(competence)));
+  form.elements.chargeAmount.value = "";
+  form.elements.history.value = `Competencia ${formatCompetence(competence)} identificada no controle de pendencias.`;
+  updatePaymentTotal(form);
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+  form.elements.amount.focus({ preventScroll: true });
 }
 
 function getVisibleExpenses() {
@@ -3025,11 +3667,14 @@ function buildAutomaticReceivables(period) {
   });
 
   const receivableContractKeys = new Set(receivables.map((item) => `contract:${item.contract.id}:${item.month}`));
+  const paymentDetailsByKey = {};
   const paymentsByPropertyMonth = state.payments.reduce((groups, payment) => {
     const paymentDate = getPaymentCompetenceDate(payment);
     if (!paymentDate || !isDateInPeriod(paymentDate, period.startDate, period.endDate)) return groups;
     const key = getAutomaticReceivablePaymentGroupKey(payment, paymentDate, receivableContractKeys);
     groups[key] = (groups[key] || 0) + Number(payment.totalAmount || 0);
+    paymentDetailsByKey[key] = paymentDetailsByKey[key] || [];
+    paymentDetailsByKey[key].push(payment);
     return groups;
   }, {});
 
@@ -3038,8 +3683,12 @@ function buildAutomaticReceivables(period) {
     .forEach((item) => {
       const contractKey = `contract:${item.contract.id}:${item.month}`;
       const propertyKey = `property:${item.contract.propertyId}:${item.month}`;
-      const available = (paymentsByPropertyMonth[contractKey] || 0) + (paymentsByPropertyMonth[propertyKey] || 0);
-      item.received = Math.min(item.expected, available);
+      const contractAvailable = paymentsByPropertyMonth[contractKey] || 0;
+      const propertyAvailable = paymentsByPropertyMonth[propertyKey] || 0;
+      const propertyReceived = contractAvailable > 0
+        ? Math.min(propertyAvailable, Math.max(item.expected - contractAvailable, 0))
+        : Math.min(item.expected, propertyAvailable);
+      item.received = contractAvailable + propertyReceived;
       const fromContract = Math.min(paymentsByPropertyMonth[contractKey] || 0, item.received);
       paymentsByPropertyMonth[contractKey] = Math.max((paymentsByPropertyMonth[contractKey] || 0) - fromContract, 0);
       paymentsByPropertyMonth[propertyKey] = Math.max((paymentsByPropertyMonth[propertyKey] || 0) - (item.received - fromContract), 0);
@@ -3048,7 +3697,33 @@ function buildAutomaticReceivables(period) {
       item.status = getReceivableStatusLabel(item.statusKey);
     });
 
-  return receivables;
+  Object.entries(paymentsByPropertyMonth).forEach(([key, amount]) => {
+    if (amount <= 0.005) return;
+    const payments = paymentDetailsByKey[key] || [];
+    const sample = payments[0];
+    if (!sample) return;
+    const paymentDate = getPaymentCompetenceDate(sample) || parseDate(sample.paymentDate) || period.startDate;
+    const month = key.split(":").pop() || toMonthValue(paymentDate);
+    const contract = sample.contractId ? state.contracts.find((item) => item.id === sample.contractId) : null;
+    const client = findClient(contract?.clientId) || (sample.lessorName ? { name: sample.lessorName } : null);
+    const dueDate = parseDate(sample.paymentDate) || paymentDate;
+    receivables.push({
+      contract: contract || { id: sample.contractId || "", propertyId: sample.propertyId },
+      property: findProperty(sample.propertyId),
+      client,
+      dueDate,
+      month,
+      expected: amount,
+      received: amount,
+      balance: 0,
+      inGracePeriod: false,
+      statusKey: "paid",
+      status: getReceivableStatusLabel("paid"),
+      note: "Lancamento recebido sem contrato ativo correspondente no periodo.",
+    });
+  });
+
+  return receivables.sort((a, b) => a.dueDate - b.dueDate);
 }
 
 function getAutomaticReceivablePaymentGroupKey(payment, paymentDate, receivableContractKeys = new Set()) {
@@ -3244,10 +3919,47 @@ function getProfitabilityStatusLabel(row) {
   return "Equilibrado";
 }
 
+async function loadAccessUsers(force = false) {
+  if (!canManageUsers() || !window.SupabaseSync?.listAccessUsers || accessUsersLoading) return;
+  if (!force && accessUsersLoadedAt && Date.now() - accessUsersLoadedAt < 30000) return;
+  accessUsersLoading = true;
+  try {
+    const result = await window.SupabaseSync.listAccessUsers();
+    accessUsers = result.users || [];
+    accessUsersLoadedAt = Date.now();
+  } catch (error) {
+    setText("access-message", `Gestão de usuários indisponível: ${error.message || error}`);
+  } finally {
+    accessUsersLoading = false;
+    renderAccessUsers();
+  }
+}
+
 function renderAccessUsers() {
   const body = document.getElementById("access-users-body");
   if (!body) return;
-  body.innerHTML = "";
+  if (!canManageUsers()) {
+    body.innerHTML = '<tr><td colspan="5" class="empty-state">Somente administradores podem visualizar usuários.</td></tr>';
+    return;
+  }
+  if (!window.SupabaseSync?.listAccessUsers) {
+    body.innerHTML = '<tr><td colspan="5" class="empty-state">Publique a função de usuários no Supabase para ativar esta lista.</td></tr>';
+    return;
+  }
+  if (!accessUsersLoadedAt && !accessUsersLoading) queueMicrotask(() => loadAccessUsers());
+  if (accessUsersLoading && !accessUsers.length) {
+    body.innerHTML = '<tr><td colspan="5" class="empty-state">Carregando usuários...</td></tr>';
+    return;
+  }
+  const current = getCurrentUser();
+  body.innerHTML = accessUsers.length ? accessUsers.map((user) => `
+    <tr>
+      <td><strong>${escapeHtml(user.name || user.email)}</strong></td>
+      <td>${escapeHtml(user.email)}</td>
+      <td><select class="compact-select" data-access-role="${escapeHtml(user.user_id)}" ${user.user_id === current?.id ? "disabled" : ""}>${Object.entries(roleLabels).map(([value,label]) => `<option value="${value}" ${user.role === value ? "selected" : ""}>${label}</option>`).join("")}</select></td>
+      <td><span class="status-badge ${user.active ? "status-active" : "status-inactive"}">${user.active ? "Ativo" : "Desativado"}</span></td>
+      <td>${user.user_id !== current?.id && user.active ? `<button class="small-button danger-button" type="button" data-delete-user="${escapeHtml(user.user_id)}">Desativar</button>` : "-"}</td>
+    </tr>`).join("") : '<tr><td colspan="5" class="empty-state">Nenhum usuário cadastrado.</td></tr>';
 }
 
 function renderAuditLogs() {
@@ -3335,6 +4047,7 @@ function renderReports() {
   const clientId = document.getElementById("report-client").value;
   const status = document.getElementById("report-status").value;
   const filters = getReportFilters();
+  const movementFilters = getReportMovementFilters();
   if (dataset !== "financial") {
     renderRegistrationReport(dataset, propertyId, clientId, status, filters);
     return;
@@ -3349,36 +4062,78 @@ function renderReports() {
     .map((contract) => toReportRow(contract, filters));
 
   renderReportMetrics(rows, payments);
-  renderRevenueReport(payments);
-  renderPropertyReports(rows, filters, payments);
-  renderExpenseTypeReport(rows, filters);
-  renderChargesReport(propertyId, clientId, status, filters);
+  renderRevenueReport(movementFilters.includeRevenue ? payments : []);
+  renderPropertyReports(rows, filters, movementFilters.includeRevenue ? payments : [], movementFilters);
+  renderExpenseDetailReport(rows, filters, movementFilters);
+  renderExpenseTypeReport(rows, filters, movementFilters);
+  renderChargesReport(propertyId, clientId, status, filters, movementFilters);
   renderSummaryReport(rows, filters);
+  updateReportMovementVisibility(movementFilters);
 
-  renderTable(
-    "reports-body",
-    rows,
-    (row) => `
-      <td>${escapeHtml(row.property)}</td>
-      <td>${escapeHtml(row.client)}</td>
-      <td>${escapeHtml(row.contact)}</td>
-      <td>${row.period}</td>
-      <td>${formatMoney(row.monthlyValue)}</td>
-      <td>${escapeHtml(row.financialTerms)}</td>
-      <td>${formatMoney(row.expenses)}</td>
-      <td><span class="status ${row.statusKey}">${row.status}</span></td>
-    `,
-  );
+  if (movementFilters.includeRevenue) {
+    renderTable(
+      "reports-body",
+      rows,
+      (row) => `
+        <td>${escapeHtml(row.property)}</td>
+        <td>${escapeHtml(row.client)}</td>
+        <td>${escapeHtml(row.contact)}</td>
+        <td>${row.period}</td>
+        <td>${formatMoney(row.monthlyValue)}</td>
+        <td>${escapeHtml(row.financialTerms)}</td>
+        <td>${formatMoney(row.expenses)}</td>
+        <td><span class="status ${row.statusKey}">${row.status}</span></td>
+      `,
+    );
+  } else {
+    renderTable("reports-body", [], () => "");
+  }
 }
 
 function updateReportModeVisibility() {
   const isRegistrationReport = getReportDataset() !== "financial";
-  document.querySelectorAll(".analytic-report").forEach((item) => item.classList.toggle("hidden", isRegistrationReport || reportMode !== "analytic"));
+  const showAnalytic = !isRegistrationReport && reportMode === "analytic";
+  const showAnalyticDetails = showAnalytic && hasActiveReportFilters();
+  document.querySelectorAll(".analytic-report").forEach((item) => item.classList.toggle("hidden", !showAnalytic));
+  document.querySelectorAll(".analytic-detail-report").forEach((item) => item.classList.toggle("hidden", !showAnalyticDetails));
+  if (showAnalyticDetails) updateReportMovementVisibility();
   document.querySelector("#reports > .metrics-grid")?.classList.toggle("hidden", isRegistrationReport);
   document.querySelector(".registration-report")?.classList.toggle("hidden", !isRegistrationReport);
   document.querySelector(".report-mode")?.classList.toggle("hidden", isRegistrationReport);
   const summary = document.getElementById("summary-report");
   if (summary) summary.classList.toggle("active", !isRegistrationReport && reportMode === "summary");
+  updateReportExportOptionsVisibility();
+}
+
+function hasActiveReportFilters() {
+  const filters = getReportFilters();
+  return (
+    (document.getElementById("report-property")?.value || "all") !== "all" ||
+    (document.getElementById("report-client")?.value || "all") !== "all" ||
+    (document.getElementById("report-status")?.value || "all") !== "all" ||
+    filters.expenseType !== "all" ||
+    !getReportMovementFilters().includeRevenue ||
+    !getReportMovementFilters().includeExpenses ||
+    getReportMovementFilters().expenseView !== "summary" ||
+    Boolean(filters.startDate || filters.endDate || filters.minValue || filters.maxValue)
+  );
+}
+
+function updateReportMovementVisibility(movementFilters = getReportMovementFilters()) {
+  const showDetails = getReportDataset() === "financial" && reportMode === "analytic" && hasActiveReportFilters();
+  const showRevenue = showDetails && movementFilters.includeRevenue;
+  const showExpenses = showDetails && movementFilters.includeExpenses;
+  const showBoth = showRevenue && showExpenses;
+  toggleReportSection("revenue-report-body", showRevenue);
+  toggleReportSection("property-report-body", showBoth);
+  toggleReportSection("charges-report-body", showExpenses);
+  toggleReportSection("expense-detail-report-body", showExpenses && movementFilters.expenseView === "detailed");
+  toggleReportSection("expense-type-report-body", showExpenses && movementFilters.expenseView === "summary");
+  toggleReportSection("reports-body", showRevenue);
+}
+
+function toggleReportSection(bodyId, visible) {
+  document.getElementById(bodyId)?.closest(".analytic-detail-report")?.classList.toggle("hidden", !visible);
 }
 
 function getReportDataset() {
@@ -3484,11 +4239,19 @@ function getContractsRegistrationReport(propertyId, clientId, status, filters) {
 
 function getReportFilters() {
   return {
-    expenseType: document.getElementById("report-expense-type").value,
-    startDate: document.getElementById("report-start").value,
-    endDate: document.getElementById("report-end").value,
-    minValue: parseMoneyInput(document.getElementById("report-min-value").value),
-    maxValue: parseMoneyInput(document.getElementById("report-max-value").value),
+    expenseType: document.getElementById("report-expense-type")?.value || "all",
+    startDate: document.getElementById("report-start")?.value || "",
+    endDate: document.getElementById("report-end")?.value || "",
+    minValue: parseMoneyInput(document.getElementById("report-min-value")?.value || ""),
+    maxValue: parseMoneyInput(document.getElementById("report-max-value")?.value || ""),
+  };
+}
+
+function getReportMovementFilters() {
+  return {
+    includeRevenue: document.getElementById("report-include-revenue")?.checked !== false,
+    includeExpenses: document.getElementById("report-include-expenses")?.checked !== false,
+    expenseView: document.getElementById("report-expense-view")?.value || "summary",
   };
 }
 
@@ -3663,12 +4426,12 @@ function renderRevenueReport(payments = getFilteredPayments()) {
   );
 }
 
-function renderPropertyReports(reportRows, filters = getReportFilters(), payments = getFilteredPayments(filters)) {
+function renderPropertyReports(reportRows, filters = getReportFilters(), payments = getFilteredPayments(filters), movementFilters = getReportMovementFilters()) {
   const rows = state.properties
     .map((property) => {
       const propertyContracts = reportRows.filter((row) => row.propertyId === property.id);
       const revenue = payments.filter((payment) => payment.propertyId === property.id).reduce((sum, payment) => sum + Number(payment.totalAmount || 0), 0);
-      const enteredExpenses = getEnteredExpenses(property.id, filters);
+      const enteredExpenses = movementFilters.includeExpenses ? getEnteredExpenses(property.id, filters) : 0;
       const ownerCharges = propertyContracts.reduce((sum, row) => sum + row.ownerChargeCount, 0);
       const ownerExpenses = enteredExpenses;
       return {
@@ -3697,7 +4460,94 @@ function renderPropertyReports(reportRows, filters = getReportFilters(), payment
   renderChart("net-chart", rows, "netRevenue", "net");
 }
 
-function renderExpenseTypeReport(reportRows, filters = getReportFilters()) {
+function renderExpenseDetailReport(reportRows, filters = getReportFilters(), movementFilters = getReportMovementFilters()) {
+  if (!movementFilters.includeExpenses || movementFilters.expenseView !== "detailed") {
+    renderTable("expense-detail-report-body", [], () => "");
+    return;
+  }
+  const propertyIds = new Set(reportRows.map((row) => row.propertyId));
+  const expenses = getFilteredExpenses(filters)
+    .filter((expense) => propertyIds.has(expense.propertyId))
+    .filter((expense) => !filters.minValue || Number(expense.amount || 0) >= filters.minValue)
+    .filter((expense) => !filters.maxValue || Number(expense.amount || 0) <= filters.maxValue)
+    .filter((expense) => !expense.adjustedDue || isDateYearUpToCurrent(expense.adjustedDue))
+    .map((expense) => ({
+      ...expense,
+      property: findProperty(expense.propertyId)?.description || "-",
+    }))
+    .sort((a, b) => String(a.property || "").localeCompare(String(b.property || "")) || String(a.expenseType || "").localeCompare(String(b.expenseType || "")) || String(a.expenseDate).localeCompare(String(b.expenseDate)));
+  const groupedRows = buildGroupedExpenseDetailRows(expenses);
+
+  renderTable(
+    "expense-detail-report-body",
+    groupedRows,
+    (row) => `
+      ${renderGroupedExpenseDetailRow(row)}
+    `,
+  );
+}
+
+function buildGroupedExpenseDetailRows(expenses) {
+  const rows = [];
+  let currentProperty = "";
+  let currentType = "";
+  let propertyTotal = 0;
+  let typeTotal = 0;
+  let typeCount = 0;
+  const closeType = () => {
+    if (!currentType) return;
+    rows.push({ kind: "expense-type-total", label: currentType, count: typeCount, total: typeTotal });
+    currentType = "";
+    typeTotal = 0;
+    typeCount = 0;
+  };
+  const closeProperty = () => {
+    if (!currentProperty) return;
+    closeType();
+    rows.push({ kind: "expense-property-total", property: currentProperty, total: propertyTotal });
+    currentProperty = "";
+    propertyTotal = 0;
+  };
+  expenses.forEach((expense) => {
+    const property = expense.property || "-";
+    const type = expense.expenseType || "Outros";
+    if (property !== currentProperty) {
+      closeProperty();
+      currentProperty = property;
+      rows.push({ kind: "expense-property", property });
+    }
+    if (type !== currentType) {
+      closeType();
+      currentType = type;
+    }
+    const amount = Number(expense.amount || 0);
+    rows.push({ kind: "expense-detail", ...expense, expenseType: type });
+    typeTotal += amount;
+    propertyTotal += amount;
+    typeCount += 1;
+  });
+  closeProperty();
+  return rows;
+}
+
+function renderGroupedExpenseDetailRow(row) {
+  if (row.kind === "expense-property") return `<td class="report-group-row" colspan="5">${escapeHtml(row.property)}</td>`;
+  if (row.kind === "expense-type-total") return `<td class="report-subtotal-row" colspan="4">Total ${escapeHtml(row.label)} (${row.count} lancamento(s))</td><td class="report-total-cell">${formatMoney(row.total)}</td>`;
+  if (row.kind === "expense-property-total") return `<td class="report-total-row" colspan="4">Total do imovel ${escapeHtml(row.property)}</td><td class="report-total-cell">${formatMoney(row.total)}</td>`;
+  return `
+    <td>${formatDate(row.expenseDate)}</td>
+    <td>${escapeHtml(row.expenseType || "-")}</td>
+    <td>${escapeHtml(row.note || "-")}</td>
+    <td>${escapeHtml(row.contractCode || "-")}</td>
+    <td>${formatMoney(row.amount)}</td>
+  `;
+}
+
+function renderExpenseTypeReport(reportRows, filters = getReportFilters(), movementFilters = getReportMovementFilters()) {
+  if (!movementFilters.includeExpenses || movementFilters.expenseView !== "summary") {
+    renderTable("expense-type-report-body", [], () => "");
+    return;
+  }
   const propertyIds = new Set(reportRows.map((row) => row.propertyId));
   const expenses = getFilteredExpenses(filters).filter((expense) => propertyIds.has(expense.propertyId));
   const total = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
@@ -3711,7 +4561,7 @@ function renderExpenseTypeReport(reportRows, filters = getReportFilters()) {
 
   renderTable(
     "expense-type-report-body",
-    Object.values(grouped).sort((a, b) => b.total - a.total),
+    Object.values(grouped).sort((a, b) => a.expenseType.localeCompare(b.expenseType)),
     (row) => `
       <td>${escapeHtml(row.expenseType)}</td>
       <td>${row.count}</td>
@@ -3721,21 +4571,76 @@ function renderExpenseTypeReport(reportRows, filters = getReportFilters()) {
   );
 }
 
-function renderChargesReport(propertyId, clientId, status, filters = getReportFilters()) {
-  const rows = getFilteredChargeRows(propertyId, clientId, status).filter((row) => contractMatchesReportFilters(row.contract, filters));
+function renderChargesReport(propertyId, clientId, status, filters = getReportFilters(), movementFilters = getReportMovementFilters()) {
+  const rows = movementFilters.includeExpenses
+    ? getFilteredChargeRows(propertyId, clientId, status)
+      .filter((row) => contractMatchesReportFilters(row.contract, filters))
+      .filter((row) => row.responsible === "locador")
+      .filter((row) => filters.expenseType === "all" || row.expenseType === filters.expenseType)
+      .filter((row) => isDateYearUpToCurrent(row.adjustedDue))
+      .sort((a, b) => String(a.property || "").localeCompare(String(b.property || "")) || String(a.charge || "").localeCompare(String(b.charge || "")) || String(a.adjustedDue || "").localeCompare(String(b.adjustedDue || "")))
+    : [];
+  const reportRows = buildGroupedChargeRows(rows);
 
   renderTable(
     "charges-report-body",
-    rows,
+    reportRows,
     (row) => `
-      <td>${escapeHtml(row.property)}</td>
-      <td>${escapeHtml(row.client)}</td>
-      <td>${escapeHtml(row.charge)}</td>
-      <td>${escapeHtml(capitalize(row.responsible))}</td>
-      <td>${escapeHtml(row.baseDue)}</td>
-      <td>${formatDate(row.adjustedDue)}</td>
+      ${renderGroupedChargeRow(row)}
     `,
   );
+}
+
+function buildGroupedChargeRows(charges) {
+  const rows = [];
+  let currentProperty = "";
+  let currentCharge = "";
+  let propertyCount = 0;
+  let chargeCount = 0;
+  const closeCharge = () => {
+    if (!currentCharge) return;
+    rows.push({ kind: "charge-type-total", label: currentCharge, count: chargeCount });
+    currentCharge = "";
+    chargeCount = 0;
+  };
+  const closeProperty = () => {
+    if (!currentProperty) return;
+    closeCharge();
+    rows.push({ kind: "charge-property-total", property: currentProperty, count: propertyCount });
+    currentProperty = "";
+    propertyCount = 0;
+  };
+  charges.forEach((charge) => {
+    const property = charge.property || "-";
+    const label = charge.charge || "-";
+    if (property !== currentProperty) {
+      closeProperty();
+      currentProperty = property;
+      rows.push({ kind: "charge-property", property });
+    }
+    if (label !== currentCharge) {
+      closeCharge();
+      currentCharge = label;
+    }
+    rows.push({ kind: "charge-detail", ...charge });
+    chargeCount += 1;
+    propertyCount += 1;
+  });
+  closeProperty();
+  return rows;
+}
+
+function renderGroupedChargeRow(row) {
+  if (row.kind === "charge-property") return `<td class="report-group-row" colspan="5">${escapeHtml(row.property)}</td>`;
+  if (row.kind === "charge-type-total") return `<td class="report-subtotal-row" colspan="5">Total ${escapeHtml(row.label)}: ${row.count} encargo(s)</td>`;
+  if (row.kind === "charge-property-total") return `<td class="report-total-row" colspan="5">Total do imovel ${escapeHtml(row.property)}: ${row.count} encargo(s)</td>`;
+  return `
+    <td>${escapeHtml(row.client)}</td>
+    <td>${escapeHtml(row.charge)}</td>
+    <td>${escapeHtml(capitalize(row.responsible))}</td>
+    <td>${escapeHtml(row.baseDue)}</td>
+    <td>${formatDate(row.adjustedDue)}</td>
+  `;
 }
 
 function renderChart(id, rows, valueKey, tone) {
@@ -3852,6 +4757,7 @@ function summarizeRecord(record) {
   if (record.username) return `${record.username} (${roleLabels[record.role] || record.role || "sem perfil"})`;
   if (record.description) return record.description;
   if (record.name) return record.name;
+  if (record.chargeKey && record.dueDate) return `${record.message || record.chargeKey} | vencimento ${formatDate(record.dueDate)} | ${record.confirmed ? "confirmado" : "pendente"}`;
   if (record.paymentDate) return `${formatDate(record.paymentDate)} ${formatMoney(record.totalAmount || record.amount)}`;
   if (record.expenseDate) return `${formatDate(record.expenseDate)} ${formatMoney(record.amount)} ${record.expenseType || ""}`.trim();
   if (record.monthlyValue) return `${formatMoney(record.monthlyValue)} ${record.startDate || ""}`.trim();
@@ -3928,6 +4834,19 @@ function editRecord(collection, id, formId) {
 
 function bindTableActions() {
   document.querySelector(".content").addEventListener("click", (event) => {
+    const openMissingPaymentsButton = event.target.closest("[data-open-missing-payments]");
+    if (openMissingPaymentsButton) {
+      activateView("payments", { showAccessAlert: true });
+      document.querySelector(".missing-payments-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    const missingPaymentButton = event.target.closest("[data-missing-contract]");
+    if (missingPaymentButton) {
+      startMissingPaymentLaunch(missingPaymentButton.dataset.missingContract, missingPaymentButton.dataset.missingCompetence);
+      return;
+    }
+
     const editUserButton = event.target.closest("[data-edit-user]");
     if (editUserButton) {
       editAccessUser(editUserButton.dataset.editUser);
@@ -3966,14 +4885,38 @@ function deleteRecord(collection, id) {
   renderAll();
 }
 
-function editAccessUser() {
-  purgeLocalAccessUsers();
-  setText("settings-message", "Usuarios locais foram desativados. Edite usuarios no painel Auth do Supabase.");
+async function editAccessUser(userId, role) {
+  if (!canManageUsers()) {
+    alert("Apenas administradores podem alterar perfis.");
+    return;
+  }
+  const before = accessUsers.find((user) => user.user_id === userId);
+  try {
+    await window.SupabaseSync.updateAccessUserRole(userId, role);
+    addAuditLog("user_role_updated", "auth", userId, before, { username: before?.email, role }, false);
+    await loadAccessUsers(true);
+    setText("access-message", "Perfil atualizado com sucesso.");
+  } catch (error) {
+    setText("access-message", `Não foi possível alterar o perfil: ${error.message || error}`);
+    await loadAccessUsers(true);
+  }
 }
 
-function deleteAccessUser() {
-  purgeLocalAccessUsers();
-  setText("settings-message", "Usuarios locais foram removidos. A autenticacao ativa e feita pelo Supabase.");
+async function deleteAccessUser(userId) {
+  if (!canManageUsers()) {
+    alert("Apenas administradores podem desativar usuários.");
+    return;
+  }
+  const user = accessUsers.find((item) => item.user_id === userId);
+  if (!user || !confirm(`Desativar o acesso de ${user.name || user.email}?`)) return;
+  try {
+    await window.SupabaseSync.deactivateAccessUser(userId);
+    addAuditLog("user_deactivated", "auth", userId, user, null, false);
+    await loadAccessUsers(true);
+    setText("access-message", "Acesso desativado.");
+  } catch (error) {
+    setText("access-message", `Não foi possível desativar: ${error.message || error}`);
+  }
 }
 
 function toReportRow(contract, filters = getReportFilters()) {
@@ -4135,26 +5078,223 @@ function nextDueDate(day) {
 }
 
 function exportReportsCsv() {
-  if (getReportDataset() !== "financial") {
-    const report = getCurrentRegistrationReportData();
-    const csv = [report.headers, ...report.rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";")).join("\n");
-    downloadTextFile(csv, `${getRegistrationReportFileBase(report)}.csv`, "text/csv;charset=utf-8");
-    return;
-  }
-  const rows = reportMode === "summary"
-    ? [["Indicador", "Resultado", "Leitura gerencial"]]
-    : [["Imovel", "Data", "Competencia", "Pagamento", "Encargo", "Total recebido", "Historico"]];
-  const selector = reportMode === "summary" ? "#summary-report-body tr" : "#revenue-report-body tr";
-  document.querySelectorAll(selector).forEach((tr) => {
-    const cells = [...tr.querySelectorAll("td")].map((td) => td.innerText.replace(/\s+/g, " ").trim());
-    if (cells.length) rows.push(cells);
-  });
-
-  const csv = rows.map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(";")).join("\n");
-  downloadTextFile(csv, reportMode === "summary" ? "relatorio-gerencial-locacoes.csv" : "relatorio-locacoes.csv", "text/csv;charset=utf-8");
+  requestReportExport("csv");
 }
 
 function exportReportsExcel() {
+  requestReportExport("excel");
+}
+
+function exportReportsPdf() {
+  requestReportExport("pdf");
+}
+
+function requestReportExport(format) {
+  if (getReportDataset() !== "financial") {
+    runReportExport(format);
+    return;
+  }
+  openExportSelection("report-export-selection", format);
+}
+
+function confirmReportExport() {
+  const format = getPendingExportFormat("report-export-selection");
+  closeExportSelection("report-export-selection");
+  runReportExport(format);
+}
+
+function runReportExport(format) {
+  const actions = {
+    csv: performReportsCsv,
+    excel: performReportsExcel,
+    pdf: performReportsPdf,
+  };
+  actions[format || "pdf"]?.();
+}
+
+function exportFinancialErpCsv() {
+  openExportSelection("erp-export-selection", "csv");
+}
+
+function exportFinancialErpExcel() {
+  openExportSelection("erp-export-selection", "excel");
+}
+
+function exportFinancialErpPdf() {
+  openExportSelection("erp-export-selection", "pdf");
+}
+
+function confirmFinancialErpExport() {
+  const format = getPendingExportFormat("erp-export-selection");
+  closeExportSelection("erp-export-selection");
+  const actions = {
+    csv: performFinancialErpCsv,
+    excel: performFinancialErpExcel,
+    pdf: performFinancialErpPdf,
+  };
+  actions[format || "pdf"]?.();
+}
+
+function openExportSelection(panelId, format) {
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+  panel.dataset.pendingExport = format;
+  panel.classList.remove("hidden");
+  updateExportConfirmLabel(panelId, format);
+  if (panelId === "report-export-selection") updateReportExportOptionsVisibility();
+  syncExportMaster(panelId === "report-export-selection" ? "report-export-all" : "erp-export-all", panelId === "report-export-selection" ? "report-export-section" : "erp-export-section");
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function closeExportSelection(panelId) {
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+  panel.classList.add("hidden");
+  panel.dataset.pendingExport = "";
+}
+
+function getPendingExportFormat(panelId) {
+  return document.getElementById(panelId)?.dataset.pendingExport || "pdf";
+}
+
+function updateExportConfirmLabel(panelId, format) {
+  const label = { csv: "CSV", excel: "Excel", pdf: "PDF" }[format] || "PDF";
+  const buttonId = panelId === "report-export-selection" ? "report-export-confirm" : "erp-export-confirm";
+  const button = document.getElementById(buttonId);
+  if (button) button.textContent = `Confirmar exportacao ${label}`;
+}
+function setupExportSelectionControls() {
+  bindExportSelectionControl("report-export-all", "report-export-section", updateReportExportOptionsVisibility);
+  bindExportSelectionControl("erp-export-all", "erp-export-section");
+  document.getElementById("report-export-confirm")?.addEventListener("click", confirmReportExport);
+  document.getElementById("report-export-cancel")?.addEventListener("click", () => closeExportSelection("report-export-selection"));
+  document.getElementById("erp-export-confirm")?.addEventListener("click", confirmFinancialErpExport);
+  document.getElementById("erp-export-cancel")?.addEventListener("click", () => closeExportSelection("erp-export-selection"));
+  updateReportExportOptionsVisibility();
+}
+
+function bindExportSelectionControl(masterId, itemName, afterChange = null) {
+  const master = document.getElementById(masterId);
+  const items = [...document.querySelectorAll(`input[name="${itemName}"]`)];
+  if (!master || !items.length || master.dataset.exportSelectionBound === "true") return;
+  master.dataset.exportSelectionBound = "true";
+  const syncMaster = () => {
+    const activeItems = items.filter((item) => !item.closest(".hidden"));
+    const checkedCount = activeItems.filter((item) => item.checked).length;
+    master.checked = activeItems.length > 0 && checkedCount === activeItems.length;
+    master.indeterminate = checkedCount > 0 && checkedCount < activeItems.length;
+  };
+  master.addEventListener("change", () => {
+    items.forEach((item) => {
+      if (!item.closest(".hidden")) item.checked = master.checked;
+    });
+    syncMaster();
+    afterChange?.();
+  });
+  items.forEach((item) => item.addEventListener("change", () => {
+    syncMaster();
+    afterChange?.();
+  }));
+  syncMaster();
+}
+
+function updateReportExportOptionsVisibility() {
+  const isFinancial = getReportDataset() === "financial";
+  const selection = document.getElementById("report-export-selection");
+  if (!isFinancial) selection?.classList.add("hidden");
+  document.getElementById("report-export-analytic-options")?.classList.toggle("hidden", !isFinancial || reportMode !== "analytic");
+  document.getElementById("report-export-summary-options")?.classList.toggle("hidden", !isFinancial || reportMode !== "summary");
+  syncExportMaster("report-export-all", "report-export-section");
+}
+
+function syncExportMaster(masterId, itemName) {
+  const master = document.getElementById(masterId);
+  const items = [...document.querySelectorAll(`input[name="${itemName}"]`)].filter((item) => !item.closest(".hidden"));
+  if (!master || !items.length) return;
+  const checkedCount = items.filter((item) => item.checked).length;
+  master.checked = checkedCount === items.length;
+  master.indeterminate = checkedCount > 0 && checkedCount < items.length;
+}
+
+function getSelectedReportExportTables() {
+  const tables = REPORT_EXPORT_TABLES[reportMode] || REPORT_EXPORT_TABLES.analytic;
+  const selectedKeys = getSelectedExportKeys("report-export-all", "report-export-section", tables.map((table) => table.key));
+  return tables.filter((table) => selectedKeys.includes(table.key));
+}
+
+function getSelectedErpExportKeys() {
+  return getSelectedExportKeys("erp-export-all", "erp-export-section", ERP_EXPORT_KEYS);
+}
+
+function getSelectedExportKeys(masterId, itemName, allowedKeys) {
+  const master = document.getElementById(masterId);
+  if (!master || master.checked) return allowedKeys;
+  const allowed = new Set(allowedKeys);
+  return [...document.querySelectorAll(`input[name="${itemName}"]:checked`)]
+    .map((item) => item.value)
+    .filter((key) => allowed.has(key));
+}
+
+function ensureExportSelection(sections) {
+  if (sections.length) return true;
+  alert("Selecione pelo menos um relatorio para exportar.");
+  return false;
+}
+
+function getTableRows(selector) {
+  return [...document.querySelectorAll(`${selector} tr`)].map((tr) =>
+    [...tr.querySelectorAll("td")].map((td) => td.innerText.replace(/\s+/g, " ").trim()),
+  ).filter((row) => row.length);
+}
+
+function buildCsvSections(sections) {
+  const lines = [];
+  sections.forEach((section) => {
+    lines.push(section.title);
+    if (section.headers?.length) lines.push(section.headers.map(escapeCsvCell).join(";"));
+    section.rows.forEach((row) => lines.push(row.map(escapeCsvCell).join(";")));
+    lines.push("");
+  });
+  return "\ufeff" + lines.join("\n");
+}
+
+function escapeCsvCell(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function getReportExportSections() {
+  return getSelectedReportExportTables().map((table) => ({ ...table, rows: getTableRows(table.selector) }));
+}
+
+function getErpExportSections(data) {
+  const sections = [
+    { key: "summary", title: "DRE imobiliaria", sheet: "DRE", headers: null, rows: data.summary },
+    { key: "cashflow", title: "Fluxo de caixa", sheet: "Fluxo de caixa", headers: data.cashflow.headers, rows: data.cashflow.rows },
+    { key: "receivables", title: "Contas a receber", sheet: "Contas a receber", headers: data.receivables.headers, rows: data.receivables.rows },
+    { key: "expenseCategories", title: "Despesas por categoria", sheet: "Despesas categoria", headers: data.expenseCategories.headers, rows: data.expenseCategories.rows },
+    { key: "profitability", title: "Rentabilidade por imovel", sheet: "Rentabilidade", headers: data.profitability.headers, rows: data.profitability.rows },
+  ];
+  const selected = new Set(getSelectedErpExportKeys());
+  return sections.filter((section) => selected.has(section.key));
+}
+function performReportsCsv() {
+  if (getReportDataset() !== "financial") {
+    const report = getCurrentRegistrationReportData();
+    const csv = [report.headers, ...report.rows].map((row) => row.map(escapeCsvCell).join(";")).join("\n");
+    downloadTextFile("\ufeff" + csv, `${getRegistrationReportFileBase(report)}.csv`, "text/csv;charset=utf-8");
+    return;
+  }
+  renderReports();
+  const sections = getReportExportSections();
+  if (!ensureExportSelection(sections)) return;
+  downloadTextFile(
+    buildCsvSections(sections),
+    reportMode === "summary" ? "relatorio-gerencial-locacoes.csv" : "relatorio-locacoes.csv",
+    "text/csv;charset=utf-8",
+  );
+}
+
+function performReportsExcel() {
   renderReports();
   if (getReportDataset() !== "financial") {
     const report = getCurrentRegistrationReportData();
@@ -4173,49 +5313,47 @@ function exportReportsExcel() {
     downloadTextFile(workbook, `${getRegistrationReportFileBase(report)}.xls`, "application/vnd.ms-excel;charset=utf-8");
     return;
   }
-  const analyticTables = [
-    { title: "Receitas lancadas", selector: "#revenue-report-body", headers: ["Imovel", "Data", "Competencia", "Pagamento", "Encargo", "Total recebido", "Historico"] },
-    { title: "Resultado por imovel", selector: "#property-report-body", headers: ["Imovel", "Receita recebida", "Despesas apropriadas", "Taxas do locador", "Receita liquida"] },
-    { title: "Despesas por tipo", selector: "#expense-type-report-body", headers: ["Despesa", "Quantidade", "Total", "Participacao"] },
-    { title: "Encargos e vencimentos", selector: "#charges-report-body", headers: ["Imovel", "Cliente", "Encargo", "Responsavel", "Vencimento base", "Vencimento ajustado"] },
-    { title: "Contratos filtrados", selector: "#reports-body", headers: ["Imovel", "Cliente", "Contato", "Vigencia", "Valor mensal", "Valor ajustado", "Garantia/carencia", "Despesa vinculada", "Status"] },
-  ];
-  const summaryTables = [
-    { title: "Resumo executivo", selector: "#summary-report-body", headers: ["Indicador", "Resultado", "Leitura gerencial"] },
-    { title: "Resultado gerencial por imovel", selector: "#summary-property-body", headers: ["Imovel", "Receita", "Encargos", "Despesas", "Resultado", "Participacao na receita"] },
-  ];
-  const tables = reportMode === "summary" ? summaryTables : analyticTables;
-  const sections = tables.map((table) => `
-    <h2>${escapeHtml(table.title)}</h2>
+  const sections = getReportExportSections();
+  if (!ensureExportSelection(sections)) return;
+  const htmlSections = sections.map((section) => `
+    <h2>${escapeHtml(section.title)}</h2>
     <table>
-      <thead><tr>${table.headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
-      <tbody>${document.querySelector(table.selector).innerHTML}</tbody>
+      <thead><tr>${section.headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
+      <tbody>${section.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}</tbody>
     </table>
   `);
   const workbook = `
     <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head><meta charset="UTF-8" /></head>
-      <body>${sections.join("<br />")}</body>
+      <body>${htmlSections.join("<br />")}</body>
     </html>
   `;
   downloadTextFile(workbook, reportMode === "summary" ? "relatorio-gerencial-locacoes.xls" : "relatorio-locacoes.xls", "application/vnd.ms-excel;charset=utf-8");
 }
 
-function exportReportsPdf() {
+function performReportsPdf() {
   renderReports();
   if (getReportDataset() !== "financial") {
     exportRegistrationReportPdf();
     return;
   }
-  const report = document.getElementById("reports").cloneNode(true);
-  report.querySelectorAll("button").forEach((button) => button.remove());
+  const sections = getReportExportSections();
+  if (!ensureExportSelection(sections)) return;
   const styles = document.querySelector("link[rel='stylesheet']").href;
   const printWindow = window.open("", "_blank");
   if (!printWindow) {
     alert("Permita pop-ups para gerar o PDF.");
     return;
   }
-
+  const sectionHtml = sections.map((section) => `
+    <section class="panel table-wrap">
+      <div class="panel-header"><h3>${escapeHtml(section.title)}</h3><span>${section.rows.length} registro(s)</span></div>
+      <table class="management-table">
+        <thead><tr>${section.headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
+        <tbody>${section.rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}</tbody>
+      </table>
+    </section>
+  `).join("");
   printWindow.document.write(`
     <!doctype html>
     <html lang="pt-BR">
@@ -4225,11 +5363,11 @@ function exportReportsPdf() {
         <link rel="stylesheet" href="${styles}" />
         <style>
           body { background: #fff; padding: 24px; }
-          .view { display: grid; gap: 18px; }
           .print-header { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; }
           .print-header img { width: 220px; }
-          .report-actions, .filters { display: none; }
-          .panel, .metric { box-shadow: none; } .metrics-grid, .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .metric, .summary-item { min-width: 0; overflow: hidden; } .metric strong, .summary-item strong { display: block; font-size: 16px; line-height: 1.15; overflow-wrap: anywhere; word-break: break-word; } #report-top-property { font-size: 13px; } table { table-layout: fixed; width: 100%; } th, td { overflow-wrap: anywhere; word-break: break-word; font-size: 11px; }
+          .panel { box-shadow: none; margin-bottom: 18px; }
+          table { table-layout: fixed; width: 100%; }
+          th, td { overflow-wrap: anywhere; word-break: break-word; font-size: 11px; }
         </style>
       </head>
       <body>
@@ -4240,7 +5378,7 @@ function exportReportsPdf() {
             <p>Gerado em ${formatDate(toIsoDate(new Date()))}</p>
           </div>
         </header>
-        ${report.outerHTML}
+        ${sectionHtml}
       </body>
     </html>
   `);
@@ -4248,7 +5386,6 @@ function exportReportsPdf() {
   printWindow.focus();
   setTimeout(() => printWindow.print(), 400);
 }
-
 function getCurrentRegistrationReportData() {
   return getRegistrationReportData(
     getReportDataset(),
@@ -4331,6 +5468,7 @@ function createSampleData() {
       { id: uid("payment"), propertyId: propertyA.id, paymentDate: "2026-05-10", amount: 2800, chargeAmount: 0, totalAmount: 2800, history: "Pagamento no vencimento" },
       { id: uid("payment"), propertyId: propertyB.id, paymentDate: "2026-05-12", amount: 5200, chargeAmount: 180, totalAmount: 5380, history: "Pagamento com encargo por atraso" },
     ],
+    chargeConfirmations: [],
   };
 }
 
@@ -4348,6 +5486,8 @@ function getFilteredChargeRows(propertyId = document.getElementById("report-prop
           property: property?.description || "-",
           client: client?.name || "-",
           charge: rule.label,
+          chargeKey: rule.key,
+          expenseType: getChargeExpenseType(rule),
           contract,
           contractId: contract.id,
           responsible: contract[rule.key] || "cliente",
@@ -4356,6 +5496,17 @@ function getFilteredChargeRows(propertyId = document.getElementById("report-prop
         };
       });
     });
+}
+
+function getChargeExpenseType(rule) {
+  if (["iptuResponsible", "spuResponsible", "fireFeeResponsible"].includes(rule.key)) return "Impostos e taxas";
+  if (rule.key === "condoFeeResponsible") return "Condominio";
+  return "Outros";
+}
+
+function isDateYearUpToCurrent(dateValue, referenceDate = new Date()) {
+  const parsed = parseDate(dateValue);
+  return !parsed || parsed.getFullYear() <= referenceDate.getFullYear();
 }
 
 function getChargeDueDate(rule) {
@@ -4722,8 +5873,10 @@ function getErpExportData() {
   };
 }
 
-function exportFinancialErpExcel() {
+function performFinancialErpExcel() {
   const data = getErpExportData();
+  const sections = getErpExportSections(data);
+  if (!ensureExportSelection(sections)) return;
   const fileName = `erp-financeiro-${toMonthValue(data.period.startDate)}_a_${toMonthValue(data.period.endDate)}.xlsx`;
 
   const xlsx = window.XLSX;
@@ -4739,16 +5892,17 @@ function exportFinancialErpExcel() {
     const ws = xlsx.utils.aoa_to_sheet(aoa);
     xlsx.utils.book_append_sheet(wb, ws, name.slice(0, 31));
   };
-  addSheet("Resumo", null, data.summary, [[`ERP Financeiro - ${companyName}`], [`Gerado em ${formatDate(toIsoDate(new Date()))}`], []]);
-  addSheet("Contas a receber", data.receivables.headers, data.receivables.rows);
-  addSheet("Fluxo de caixa", data.cashflow.headers, data.cashflow.rows);
-  addSheet("Despesas por categoria", data.expenseCategories.headers, data.expenseCategories.rows);
-  addSheet("Rentabilidade por imovel", data.profitability.headers, data.profitability.rows);
+  sections.forEach((section, index) => {
+    const prefix = index === 0 ? [[`ERP Financeiro - ${companyName}`], [`Gerado em ${formatDate(toIsoDate(new Date()))}`], []] : [];
+    addSheet(section.sheet || section.title, section.headers, section.rows, prefix);
+  });
   xlsx.writeFile(wb, fileName);
 }
 
-function exportFinancialErpPdf() {
+function performFinancialErpPdf() {
   const data = getErpExportData();
+  const sections = getErpExportSections(data);
+  if (!ensureExportSelection(sections)) return;
   const fileName = `erp-financeiro-${toMonthValue(data.period.startDate)}_a_${toMonthValue(data.period.endDate)}.pdf`;
 
   const jsPDFCtor = window.jspdf?.jsPDF;
@@ -4790,49 +5944,46 @@ function exportFinancialErpPdf() {
     });
   };
 
-  // Resumo como tabela simples
-  if (typeof doc.autoTable === "function") {
-    doc.autoTable({
-      body: data.summary,
-      startY: 90,
-      margin: { left: 40, right: 40 },
-      styles: { fontSize: 9, cellPadding: 4, overflow: "linebreak" },
-      columnStyles: { 0: { fontStyle: "bold", cellWidth: 200 } },
-    });
-  }
-  drawTable("Contas a receber", data.receivables.headers, data.receivables.rows);
-  drawTable("Fluxo de caixa", data.cashflow.headers, data.cashflow.rows);
-  drawTable("Despesas por categoria", data.expenseCategories.headers, data.expenseCategories.rows);
-  drawTable("Rentabilidade por imovel", data.profitability.headers, data.profitability.rows);
-
+  sections.forEach((section) => drawTable(section.title, section.headers, section.rows));
   doc.save(fileName);
 }
-
 function formatMoneyOrNumber(value) {
   if (Number.isFinite(value)) return formatMoney(value);
   return String(value);
 }
 
-function exportFinancialErpCsv() {
+function performFinancialErpCsv() {
   const data = getErpExportData();
-  const lines = [];
-  const push = (title, headers, rows) => {
-    lines.push(title);
-    if (headers) lines.push(headers.join(";"));
-    rows.forEach((r) => lines.push(r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")));
-    lines.push("");
-  };
-  push("Resumo", null, data.summary);
-  push("Contas a receber", data.receivables.headers, data.receivables.rows);
-  push("Fluxo de caixa", data.cashflow.headers, data.cashflow.rows);
-  push("Despesas por categoria", data.expenseCategories.headers, data.expenseCategories.rows);
-  push("Rentabilidade por imovel", data.profitability.headers, data.profitability.rows);
+  const sections = getErpExportSections(data);
+  if (!ensureExportSelection(sections)) return;
   downloadTextFile(
-    "\ufeff" + lines.join("\n"),
+    buildCsvSections(sections),
     `erp-financeiro-${toMonthValue(data.period.startDate)}_a_${toMonthValue(data.period.endDate)}.csv`,
     "text/csv;charset=utf-8",
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

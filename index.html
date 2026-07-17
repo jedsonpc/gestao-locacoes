@@ -14,9 +14,9 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=local-1.9.16" />
+    <link rel="stylesheet" href="styles.css?v=local-1.9.32" />
   </head>
-  <body>
+  <body class="locked">
     <section class="login-screen" id="login-screen" aria-label="Acesso ao sistema">
       <form class="login-card" id="login-form">
         <img class="login-logo" src="logo-imobiliaria-rio.svg" alt="Imobiliaria Rio dos Passos Ltda" />
@@ -28,7 +28,10 @@
         </label>
         <label>
           Senha
-          <input name="password" type="password" autocomplete="current-password" required placeholder="Senha" />
+          <span class="password-field">
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required placeholder="Senha" />
+            <button class="password-toggle" type="button" data-toggle-password="login-password" aria-label="Exibir senha" aria-pressed="false">Exibir</button>
+          </span>
         </label>
         <button class="primary-button" type="submit">Entrar</button>
         <span class="form-message" id="login-message"></span>
@@ -50,13 +53,23 @@
           <button class="nav-button" data-view="properties" type="button">Imoveis</button>
           <button class="nav-button" data-view="clients" type="button">Clientes</button>
           <button class="nav-button" data-view="contracts" type="button">Contratos</button>
-          <button class="nav-button" data-view="payments" type="button">Receitas</button>
+          <button class="nav-button has-badge" data-view="payments" type="button">
+            <span>Receitas</span>
+            <strong class="nav-badge hidden" id="missing-payments-nav-badge">0</strong>
+          </button>
           <button class="nav-button" data-view="expenses" type="button">Despesas</button>
+          <button class="nav-button" data-view="charge-checklist" type="button">Checklist de encargos</button>
           <button class="nav-button" data-view="financial-erp" type="button">ERP financeiro</button>
           <button class="nav-button" data-view="reports" type="button">Relatorios</button>
+          <button class="nav-button" data-view="institutional" type="button">Sobre e privacidade</button>
+          <button class="nav-button" data-view="users" type="button">Usuarios e perfis</button>
           <button class="nav-button" data-view="settings" type="button">Acesso e nuvem</button>
         </nav>
       </aside>
+
+      <button id="mobile-shell-toggle" class="mobile-shell-toggle" type="button" aria-expanded="true" aria-label="Ocultar menu superior">
+        <span aria-hidden="true">☰</span><strong>Ocultar menu</strong>
+      </button>
 
       <main class="content">
         <section class="topbar">
@@ -68,8 +81,8 @@
             <span class="sync-status" id="current-user-badge">Usuario nao identificado</span>
             <span class="sync-status" id="sync-status">Offline local</span>
             <span class="sync-status app-version-status">
-              <strong id="metric-app-version">local-1.9.16</strong>
-              <small id="metric-app-updated">28/06/2026 12:00</small>
+              <strong id="metric-app-version">local-1.9.32</strong>
+              <small id="metric-app-updated">13/07/2026 18:20</small>
             </span>
             <button class="ghost-button app-install-action hidden" id="install-app-top-button" type="button">Gerar QR Code para acesso ao sistema</button>
             <button class="ghost-button" id="logout" type="button">Sair</button>
@@ -101,6 +114,11 @@
             <article class="metric">
               <span>Taxa de ocupacao</span>
               <strong id="metric-occupancy">0,00%</strong>
+            </article>
+            <article class="metric missing-payments-metric">
+              <span>Competencias sem receita</span>
+              <strong id="metric-missing-payments">0</strong>
+              <button class="small-button" data-open-missing-payments type="button">Conferir pendencias</button>
             </article>
           </div>
 
@@ -372,6 +390,10 @@
                   <option value="locador">Locador</option>
                 </select>
               </label>
+              <label class="inline-check condo-client-name-option">
+                <input name="condoFeeInClientName" type="checkbox" />
+                Taxa de condominio em nome do cliente
+              </label>
               <label>
                 IPTU - vence em 10/02
                 <select name="iptuResponsible" required>
@@ -455,7 +477,7 @@
               <input name="contractCode" type="text" readonly placeholder="Vinculado pela data" />
             </label>
             <label>
-              Nome do locador
+              Nome do locatario
               <input name="lessorName" type="text" readonly placeholder="Vinculado ao contrato" />
             </label>
             <label>
@@ -550,7 +572,7 @@
               <input name="contractCode" type="text" readonly placeholder="Selecione um imovel com contrato" />
             </label>
             <label>
-              Nome do locador
+              Nome do locatario
               <input name="lessorName" type="text" readonly placeholder="Vinculado ao contrato" />
             </label>
             <label>
@@ -612,6 +634,107 @@
               <tbody id="payments-body"></tbody>
             </table>
           </div>
+          <div class="table-wrap panel missing-payments-panel">
+            <div class="panel-header">
+              <div>
+                <h3>Competencias sem lancamento</h3>
+                <p>Contratos vigentes no periodo que ainda nao possuem receita registrada.</p>
+              </div>
+              <span id="missing-payments-caption">Informe o periodo para conferir</span>
+            </div>
+            <div class="filters history-filters">
+              <label>
+                Imovel
+                <select id="missing-payment-property"></select>
+              </label>
+              <label>
+                Competencia inicial
+                <input id="missing-payment-start" type="month" />
+              </label>
+              <label>
+                Competencia final
+                <input id="missing-payment-end" type="month" />
+              </label>
+              <button class="ghost-button" id="missing-payment-clear" type="button">Periodo padrao</button>
+            </div>
+            <p class="filter-message" id="missing-payments-message" role="status"></p>
+            <table class="missing-payments-table">
+              <thead>
+                <tr>
+                  <th>Competencia</th>
+                  <th>Imovel</th>
+                  <th>Contrato</th>
+                  <th>Locatario</th>
+                  <th>Vigencia</th>
+                  <th>Valor previsto</th>
+                  <th>Acoes</th>
+                </tr>
+              </thead>
+              <tbody id="missing-payments-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view management-view" id="charge-checklist">
+          <div class="report-actions panel">
+            <div>
+              <h3>Checklist de impostos e taxas</h3>
+              <p>Confirme pagamentos de encargos do cliente e da imobiliaria para auditoria futura.</p>
+            </div>
+            <span class="sync-status" id="charge-checklist-count">0 pendencias</span>
+          </div>
+          <div class="filters panel">
+            <label>
+              Imovel
+              <select id="charge-checklist-property"></select>
+            </label>
+            <label>
+              Cliente
+              <select id="charge-checklist-client"></select>
+            </label>
+            <label>
+              Responsavel
+              <select id="charge-checklist-responsible">
+                <option value="all">Todos</option>
+                <option value="cliente">Cliente</option>
+                <option value="locador">Imobiliaria</option>
+              </select>
+            </label>
+            <label>
+              Situacao
+              <select id="charge-checklist-status">
+                <option value="pending">Pendentes</option>
+                <option value="overdue">Vencidos</option>
+                <option value="confirmed">Confirmados</option>
+                <option value="all">Todos</option>
+              </select>
+            </label>
+            <label>
+              Inicio
+              <input id="charge-checklist-start" type="date" min="2026-01-01" />
+            </label>
+            <label>
+              Fim
+              <input id="charge-checklist-end" type="date" min="2026-01-01" />
+            </label>
+          </div>
+          <div class="table-wrap panel">
+            <table class="management-table charge-checklist-table">
+              <thead>
+                <tr>
+                  <th title="Pago">OK</th>
+                  <th>Imovel</th>
+                  <th>Cliente</th>
+                  <th>Encargo</th>
+                  <th title="Responsavel">Resp.</th>
+                  <th title="Vencimento">Venc.</th>
+                  <th title="Data da confirmacao">Dt. confirmacao</th>
+                  <th title="Confirmado por">Confirmado</th>
+                </tr>
+              </thead>
+              <tbody id="charge-checklist-body"></tbody>
+            </table>
+          </div>
         </section>
 
         <section class="view management-view" id="financial-erp">
@@ -624,6 +747,31 @@
               <button class="primary-button" id="erp-export-pdf" type="button">Exportar PDF</button>
               <button class="primary-button" id="erp-export-excel" type="button">Exportar Excel</button>
               <button class="ghost-button" id="erp-export-csv" type="button">Exportar CSV</button>
+            </div>
+          </div>
+          <div class="export-selection panel hidden" id="erp-export-selection" data-pending-export="">
+            <div class="export-selection-header">
+              <div>
+                <h3>Conteudo da exportacao</h3>
+                <p>Escolha quais relatorios entram no PDF, Excel ou CSV.</p>
+              </div>
+              <label class="checkbox-filter export-select-all">
+                <span>
+                  <input id="erp-export-all" type="checkbox" checked />
+                  Todos os relatorios
+                </span>
+              </label>
+            </div>
+            <div class="export-selection-grid">
+              <label><input name="erp-export-section" type="checkbox" value="summary" checked /> DRE imobiliaria</label>
+              <label><input name="erp-export-section" type="checkbox" value="cashflow" checked /> Fluxo de caixa</label>
+              <label><input name="erp-export-section" type="checkbox" value="receivables" checked /> Contas a receber</label>
+              <label><input name="erp-export-section" type="checkbox" value="expenseCategories" checked /> Despesas por categoria</label>
+              <label><input name="erp-export-section" type="checkbox" value="profitability" checked /> Rentabilidade por imovel</label>
+            </div>
+            <div class="export-selection-footer">
+              <button class="primary-button" id="erp-export-confirm" type="button">Confirmar exportacao</button>
+              <button class="ghost-button" id="erp-export-cancel" type="button">Cancelar</button>
             </div>
           </div>
           <div class="filters panel">
@@ -679,20 +827,21 @@
             </article>
           </div>
           <div class="split-layout erp-overview-grid">
-            <section class="panel">
+            <section class="panel erp-dre-panel">
               <div class="panel-header">
                 <h3>DRE imobiliaria</h3>
                 <span id="erp-dre-period">Periodo selecionado</span>
               </div>
               <div class="dre-list" id="erp-dre-list"></div>
             </section>
-            <section class="panel">
+          </div>
+          <section class="panel erp-cashflow-panel">
               <div class="panel-header">
                 <h3>Fluxo de caixa</h3>
                 <span>Entradas, saidas e saldo por mes</span>
               </div>
               <div class="table-wrap">
-                <table class="compact-table management-table">
+                <table class="compact-table management-table erp-cashflow-table">
                   <thead>
                     <tr>
                       <th>Competencia</th>
@@ -704,9 +853,8 @@
                   <tbody id="erp-cashflow-body"></tbody>
                 </table>
               </div>
-            </section>
-          </div>
-          <div class="table-wrap panel">
+          </section>
+          <div class="table-wrap panel erp-receivables-panel">
             <div class="panel-header">
               <h3>Contas a receber automaticas</h3>
               <span>Geradas pelos contratos ativos no periodo</span>
@@ -779,7 +927,37 @@
           </div>
           <div class="report-mode panel" role="group" aria-label="Tipo de relatorio">
             <button class="mode-button active" data-report-mode="analytic" type="button">Analitico</button>
-            <button class="mode-button" data-report-mode="summary" type="button">Sintetico / gerencial</button>
+            <button class="mode-button" data-report-mode="summary" type="button">Sintetico</button>
+          </div>
+          <div class="export-selection panel hidden" id="report-export-selection" data-pending-export="">
+            <div class="export-selection-header">
+              <div>
+                <h3>Conteudo da exportacao</h3>
+                <p>Escolha quais relatorios entram no PDF, Excel ou CSV.</p>
+              </div>
+              <label class="checkbox-filter export-select-all">
+                <span>
+                  <input id="report-export-all" type="checkbox" checked />
+                  Todos os relatorios
+                </span>
+              </label>
+            </div>
+            <div class="export-selection-grid" id="report-export-analytic-options">
+              <label><input name="report-export-section" type="checkbox" value="revenue" checked /> Receitas lancadas</label>
+              <label><input name="report-export-section" type="checkbox" value="property" checked /> Resultado por imovel</label>
+              <label><input name="report-export-section" type="checkbox" value="expense-detail" checked /> Despesas detalhadas</label>
+              <label><input name="report-export-section" type="checkbox" value="expense-type" checked /> Despesas por tipo</label>
+              <label><input name="report-export-section" type="checkbox" value="charges" checked /> Encargos e vencimentos</label>
+              <label><input name="report-export-section" type="checkbox" value="contracts" checked /> Contratos filtrados</label>
+            </div>
+            <div class="export-selection-grid hidden" id="report-export-summary-options">
+              <label><input name="report-export-section" type="checkbox" value="summary" checked /> Resumo executivo</label>
+              <label><input name="report-export-section" type="checkbox" value="summary-property" checked /> Resultado gerencial por imovel</label>
+            </div>
+            <div class="export-selection-footer">
+              <button class="primary-button" id="report-export-confirm" type="button">Confirmar exportacao</button>
+              <button class="ghost-button" id="report-export-cancel" type="button">Cancelar</button>
+            </div>
           </div>
           <div class="filters panel">
             <label>
@@ -818,6 +996,27 @@
                 <option>Seguro</option>
                 <option>Servicos terceiros</option>
                 <option>Outros</option>
+              </select>
+            </label>
+            <label class="checkbox-filter">
+              Movimento
+              <span>
+                <input id="report-include-revenue" type="checkbox" checked />
+                Receitas
+              </span>
+            </label>
+            <label class="checkbox-filter">
+              Movimento
+              <span>
+                <input id="report-include-expenses" type="checkbox" checked />
+                Despesas
+              </span>
+            </label>
+            <label>
+              Relatorio de despesas
+              <select id="report-expense-view">
+                <option value="summary">Resumo</option>
+                <option value="detailed">Detalhado</option>
               </select>
             </label>
             <label>
@@ -924,8 +1123,8 @@
                 </article>
               </div>
             </section>
-            <div class="table-wrap panel">
-              <table class="management-table">
+            <div class="table-wrap panel summary-property-panel">
+              <table class="management-table summary-property-table">
                 <thead>
                   <tr>
                     <th>Indicador</th>
@@ -945,7 +1144,7 @@
                     <th>Encargos</th>
                     <th>Despesas</th>
                     <th>Resultado</th>
-                    <th>Participacao na receita</th>
+                    <th>Part. receita</th>
                   </tr>
                 </thead>
                 <tbody id="summary-property-body"></tbody>
@@ -968,7 +1167,7 @@
               <div class="chart" id="net-chart"></div>
             </section>
           </div>
-          <div class="analytic-report table-wrap panel">
+          <div class="analytic-report analytic-detail-report table-wrap panel">
             <table class="management-table">
               <thead>
                 <tr>
@@ -984,7 +1183,7 @@
               <tbody id="revenue-report-body"></tbody>
             </table>
           </div>
-          <div class="analytic-report table-wrap panel">
+          <div class="analytic-report analytic-detail-report table-wrap panel">
             <table class="management-table">
               <thead>
                 <tr>
@@ -998,7 +1197,21 @@
               <tbody id="property-report-body"></tbody>
             </table>
           </div>
-          <div class="analytic-report table-wrap panel">
+          <div class="analytic-report analytic-detail-report table-wrap panel">
+            <table class="management-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Tipo</th>
+                  <th>Historico</th>
+                  <th>Contrato</th>
+                  <th>Valor</th>
+                </tr>
+              </thead>
+              <tbody id="expense-detail-report-body"></tbody>
+            </table>
+          </div>
+          <div class="analytic-report analytic-detail-report table-wrap panel">
             <table class="management-table">
               <thead>
                 <tr>
@@ -1011,11 +1224,10 @@
               <tbody id="expense-type-report-body"></tbody>
             </table>
           </div>
-          <div class="analytic-report table-wrap panel">
+          <div class="analytic-report analytic-detail-report table-wrap panel">
             <table class="management-table">
               <thead>
                 <tr>
-                  <th>Imovel</th>
                   <th>Cliente</th>
                   <th>Encargo</th>
                   <th>Responsavel</th>
@@ -1026,7 +1238,7 @@
               <tbody id="charges-report-body"></tbody>
             </table>
           </div>
-          <div class="analytic-report table-wrap panel">
+          <div class="analytic-report analytic-detail-report table-wrap panel">
             <table class="management-table">
               <thead>
                 <tr>
@@ -1046,14 +1258,137 @@
           </div>
         </section>
 
-        <section class="view" id="settings">
-          <div class="form-grid panel" id="access-panel">
-            <div class="form-intro wide">
-              <h3>Acesso ao sistema</h3>
-              <p>O login e as senhas agora sao gerenciados exclusivamente pelo Supabase. As senhas antigas salvas neste navegador sao removidas automaticamente ao abrir o app.</p>
+        <section class="view institutional-view" id="institutional">
+          <div class="panel institutional-hero">
+            <div>
+              <p class="eyebrow">Informacoes institucionais</p>
+              <h3>Sobre, suporte, privacidade e LGPD</h3>
+              <p>Informacoes sobre o sistema, o tratamento de dados e os canais de atendimento da Imobiliaria Rio dos Passos Ltda.</p>
+            </div>
+            <div class="institutional-version">
+              <span>Versao instalada</span>
+              <strong id="institutional-app-version">-</strong>
+              <small>Politica atualizada em 10/07/2026</small>
             </div>
           </div>
 
+          <div class="institutional-grid">
+            <article class="panel institutional-card">
+              <span class="institutional-number">01</span>
+              <h3>Sobre o sistema</h3>
+              <p>O Rio dos Passos e um sistema de uso administrativo para gestao de imoveis, clientes, contratos, receitas, despesas, encargos, relatorios e auditoria.</p>
+              <dl class="institutional-details">
+                <div><dt>Titular e responsavel</dt><dd>Imobiliaria Rio dos Passos Ltda</dd></div>
+                <div><dt>CNPJ</dt><dd>10.881.916/0001-51</dd></div>
+                <div><dt>Contato institucional</dt><dd><a href="mailto:jedsonpc@hotmail.com">jedsonpc@hotmail.com</a></dd></div>
+                <div><dt>Modalidade</dt><dd>Aplicativo Web Progressivo (PWA)</dd></div>
+                <div><dt>Finalidade</dt><dd>Controle patrimonial, contratual e financeiro interno</dd></div>
+              </dl>
+              <p class="institutional-note">Dados pessoais do programador nao sao exibidos nem necessarios para utilizar o sistema.</p>
+            </article>
+
+            <article class="panel institutional-card">
+              <span class="institutional-number">02</span>
+              <h3>Suporte</h3>
+              <p>Em caso de duvida, erro, indisponibilidade ou necessidade de correcao de cadastro, entre em contato com a administracao responsavel pelo sistema.</p>
+              <a class="small-button institutional-contact-link" href="mailto:jedsonpc@hotmail.com?subject=Suporte%20-%20Rio%20dos%20Passos">Enviar e-mail ao suporte</a>
+              <ol class="institutional-steps">
+                <li>Informe a tela e a operacao realizada.</li>
+                <li>Descreva o resultado esperado e o que ocorreu.</li>
+                <li>Se possivel, anexe uma captura sem expor senhas ou dados desnecessarios.</li>
+                <li>Informe a versao exibida nesta pagina.</li>
+              </ol>
+              <p class="institutional-note">Canal institucional: jedsonpc@hotmail.com. Nunca envie senha, token de acesso ou copia completa da base de dados por mensagem.</p>
+            </article>
+
+            <article class="panel institutional-card">
+              <span class="institutional-number">03</span>
+              <h3>Privacidade</h3>
+              <p>O sistema trata somente dados necessarios a administracao imobiliaria e ao cumprimento das atividades contratuais, financeiras e de seguranca.</p>
+              <h4>Dados tratados</h4>
+              <ul>
+                <li>identificacao e contato de clientes e usuarios autorizados;</li>
+                <li>dados de imoveis, contratos, documentos e responsaveis;</li>
+                <li>receitas, despesas, encargos e historicos financeiros;</li>
+                <li>registros de acesso, alteracoes e auditoria.</li>
+              </ul>
+              <h4>Armazenamento e compartilhamento</h4>
+              <p>Os dados podem permanecer no navegador para funcionamento local e no Supabase para autenticacao, sincronizacao e copia remota. Nao ha finalidade de venda de dados pessoais. O acesso deve ficar restrito a usuarios autorizados.</p>
+            </article>
+
+            <article class="panel institutional-card">
+              <span class="institutional-number">04</span>
+              <h3>LGPD e direitos do titular</h3>
+              <p>A Imobiliaria Rio dos Passos Ltda atua como responsavel pelo tratamento dos dados mantidos neste sistema, dentro de suas atividades administrativas.</p>
+              <p>O titular pode solicitar, conforme aplicavel:</p>
+              <ul>
+                <li>confirmacao e acesso aos seus dados;</li>
+                <li>correcao de informacoes incompletas ou desatualizadas;</li>
+                <li>informacoes sobre uso e compartilhamento;</li>
+                <li>anonimizacao, bloqueio ou eliminacao quando cabivel;</li>
+                <li>revogacao de consentimento, quando esta for a base utilizada.</li>
+              </ul>
+              <p>As solicitacoes devem ser encaminhadas para <a href="mailto:jedsonpc@hotmail.com?subject=Solicitacao%20LGPD%20-%20Rio%20dos%20Passos">jedsonpc@hotmail.com</a>. Para proteger os dados, a identidade do solicitante podera ser confirmada antes do atendimento.</p>
+              <p class="institutional-note">Prazos de conservacao dependem das obrigacoes contratuais, fiscais, legais e da necessidade de defesa de direitos. Exclusoes devem preservar registros cuja manutencao seja obrigatoria.</p>
+            </article>
+          </div>
+
+          <div class="panel institutional-footer">
+            <strong>Compromisso de seguranca</strong>
+            <p>Use credenciais individuais, mantenha o dispositivo protegido, encerre a sessao ao terminar e comunique imediatamente qualquer acesso indevido ou suspeita de incidente.</p>
+          </div>
+        </section>
+
+        <section class="view" id="users">
+          <form class="form-grid panel access-management-panel" id="access-form">
+            <div class="form-intro wide">
+              <h3>Cadastro de usuários</h3>
+              <p>Cadastre o usuário, escolha o perfil e envie automaticamente um convite para definição da senha.</p>
+            </div>
+            <label>
+              Nome do usuário
+              <input name="name" autocomplete="off" required />
+            </label>
+            <label>
+              E-mail
+              <input name="email" type="email" autocomplete="off" required />
+            </label>
+            <label>
+              Perfil de acesso
+              <select name="role" required>
+                <option value="consulta">Consulta</option>
+                <option value="operacional">Operacional</option>
+                <option value="financeiro">Financeiro</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </label>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">Cadastrar e enviar convite</button>
+            </div>
+            <span class="form-message wide" id="access-message"></span>
+          </form>
+
+          <div class="table-wrap panel access-users-panel">
+            <div class="panel-header">
+              <div>
+                <h3>Usuários e perfis</h3>
+                <p>Os perfis definem quais áreas e operações cada usuário pode acessar.</p>
+              </div>
+              <button class="ghost-button" id="access-refresh" type="button">Atualizar lista</button>
+            </div>
+            <table>
+              <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Status</th><th>Ação</th></tr></thead>
+              <tbody id="access-users-body"><tr><td colspan="5" class="empty-state">Carregando usuários...</td></tr></tbody>
+            </table>
+          </div>
+
+          <div class="panel">
+            <strong>Acesso exclusivo do administrador</strong>
+            <p class="muted">Os convites são enviados por e-mail para que cada usuário defina a própria senha. O perfil escolhido controla as permissões no aplicativo.</p>
+          </div>
+        </section>
+
+        <section class="view" id="settings">
           <form class="form-grid panel" id="sync-form">
             <div class="form-intro wide">
               <h3>Sincronizacao online</h3>
@@ -1167,11 +1502,34 @@
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     <script src="supabase-config.js" defer></script>
-    <script src="supabase-sync.js?v=local-1.9.16" defer></script>
-    <script src="update-checker.js?v=local-1.9.16" defer></script>
-    <script src="app.js?v=local-1.9.16" defer></script>
-  </body>
+    <script src="supabase-sync.js?v=local-1.9.32" defer></script>
+    <script src="update-checker.js?v=local-1.9.32" defer></script>
+    <script src="app.js?v=local-1.9.32" defer></script>
+    <script>
+      document.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-toggle-password]");
+        if (!button) return;
+        const input = document.getElementById(button.dataset.togglePassword);
+        if (!input) return;
+        const showPassword = input.type === "password";
+        input.type = showPassword ? "text" : "password";
+        button.textContent = showPassword ? "Ocultar" : "Exibir";
+        button.setAttribute("aria-label", showPassword ? "Ocultar senha" : "Exibir senha");
+        button.setAttribute("aria-pressed", String(showPassword));
+      });
+    </script>  </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
 
 
 

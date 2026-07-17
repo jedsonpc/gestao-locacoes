@@ -79,7 +79,38 @@
   let saveTimer = null;
   let flushingPending = false;
   let lastLocalUpdate = 0;
+  let signingOut = false;
   const DEFAULT_TIMEOUT_MS = 15000;
+
+  async function invokeUserManagement(payload) {
+    const { data, error } = await withTimeout(
+      client.functions.invoke("manage-users", { body: payload }),
+      "Tempo esgotado ao acessar a gestão de usuários."
+    );
+    if (error) {
+      let message = error.message || String(error);
+      try {
+        if (error.context instanceof Response) {
+          const detail = await error.context.clone().json();
+          message = detail?.error || detail?.message || message;
+        }
+      } catch {}
+      throw new Error(message);
+    }
+    if (data?.error) throw new Error(data.error);
+    return data;
+  }
+
+  async function attachAccessProfile(user) {
+    if (!user) return null;
+    try {
+      const result = await invokeUserManagement({ action: "me" });
+      return { ...user, appAccessProfile: result.user };
+    } catch (error) {
+      console.warn("[Supabase] Perfil central ainda não disponível:", error);
+      return user;
+    }
+  }
 
   function withTimeout(promise, message, timeoutMs = DEFAULT_TIMEOUT_MS) {
     return Promise.race([
@@ -91,11 +122,19 @@
   function cacheCurrentUser(user) {
     if (!user?.id && !user?.email) return;
     try {
+      const name = String(
+        user.appAccessProfile?.name ||
+        user.user_metadata?.name ||
+        user.user_metadata?.full_name ||
+        user.name ||
+        ""
+      ).trim();
       localStorage.setItem(OFFLINE_USER_KEY, JSON.stringify({
         id: user.id || user.email,
         email: user.email || "",
-        username: user.email || "usuario@offline",
-        role: "admin",
+        name,
+        username: name || user.email || "Usuário offline",
+        role: user.appAccessProfile?.role || user.app_metadata?.role || user.user_metadata?.role || "admin",
         cachedAt: new Date().toISOString(),
       }));
     } catch {
@@ -113,6 +152,7 @@
   }
 
   async function signIn(email, password) {
+    signingOut = false;
     freeLocalStorageSpace();
     let { data, error } = await withTimeout(
       client.auth.signInWithPassword({ email, password }),
@@ -128,11 +168,15 @@
       error = retry.error;
     }
     if (error) throw error;
-    cacheCurrentUser(data.user);
-    return data.user;
+    const user = await attachAccessProfile(data.user);
+    cacheCurrentUser(user);
+    return user;
   }
 
   async function signOut() {
+    signingOut = true;
+    clearTimeout(saveTimer);
+    saveTimer = null;
     await withTimeout(client.auth.signOut(), "Tempo esgotado ao sair. Recarregue o app se a sessao continuar aberta.");
   }
 
@@ -144,8 +188,9 @@
         8000
       );
       if (sessionData?.session?.user) {
-        cacheCurrentUser(sessionData.session.user);
-        return sessionData.session.user;
+        const user = await attachAccessProfile(sessionData.session.user);
+        cacheCurrentUser(user);
+        return user;
       }
       if (sessionError) console.warn("[Supabase] Sessao local nao encontrada:", sessionError);
 
@@ -158,8 +203,9 @@
         console.warn("[Supabase] Usuario atual nao encontrado:", error);
         return null;
       }
-      if (data.user) cacheCurrentUser(data.user);
-      return data.user || null;
+      const user = await attachAccessProfile(data.user);
+      if (user) cacheCurrentUser(user);
+      return user || null;
     } catch (error) {
       console.warn("[Supabase] Nao foi possivel verificar o usuario atual:", error);
       if (!navigator.onLine) return getCachedUser();
@@ -234,6 +280,10 @@
 
   function isMissingRowResult(data, error) {
     return !error && !data;
+  }
+
+  function isRowLevelSecurityError(error) {
+    return error?.code === "42501" || /row-level security|violates row-level security/i.test(error?.message || "");
   }
 
   function cacheState(state) {
@@ -397,7 +447,7 @@
   }
 
   async function flushPendingState() {
-    if (flushingPending || !navigator.onLine) return null;
+    if (signingOut || flushingPending || !navigator.onLine) return null;
     const pending = loadPendingState();
     if (!pending?.state) return null;
     flushingPending = true;
@@ -415,8 +465,10 @@
     cacheState(snapshot);
 
     clearTimeout(saveTimer);
+    if (signingOut) return;
     saveTimer = setTimeout(async () => {
       try {
+        if (signingOut) return;
         if (!navigator.onLine) {
           queuePendingState(snapshot, "offline");
           return;
@@ -424,6 +476,14 @@
         await persistRemoteState(snapshot);
       } catch (error) {
         queuePendingState(snapshot, error.message || "save_failed");
+        if (signingOut || /sess[aã]o.*(?:expirada|ausente|inv[aá]lida)|auth session missing|jwt expired/i.test(error.message || "")) {
+          console.info("[Supabase] Salvamento pendente preservado durante o encerramento da sessão.");
+          return;
+        }
+        if (isRowLevelSecurityError(error)) {
+          console.warn("[Supabase] Salvamento mantido localmente por politica RLS:", error.message);
+          return;
+        }
         alert(
           "Falha ao salvar na nuvem: " +
           error.message +
@@ -485,6 +545,10 @@
     flushPendingState,
     subscribeChanges,
     client,
+    listAccessUsers: () => invokeUserManagement({ action: "list" }),
+    inviteAccessUser: (user) => invokeUserManagement({ action: "invite", ...user }),
+    updateAccessUserRole: (userId, role) => invokeUserManagement({ action: "update", userId, role }),
+    deactivateAccessUser: (userId) => invokeUserManagement({ action: "deactivate", userId }),
   };
 
   window.addEventListener("online", () => {

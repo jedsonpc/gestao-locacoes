@@ -1,29 +1,23 @@
-﻿Rio dos Passos - Atualizacao local-1.9.0
+Rio dos Passos - Atualizacao local-1.9.22
 
-Arquivos alterados nesta versao:
-- update-checker.js
-- index.html
-- app.js
-- sw.js
-- version.json
-- update-package.json
-- dist e pacotes de publicacao/instalacao
-
-Correcoes:
-- O botao de instalacao no Android nao abre mais uma nova aba quando o app ja esta no Chrome.
-- Fora do Chrome, o botao abre o app no Chrome para permitir a instalacao.
-- Dentro do Chrome, quando o prompt nativo nao estiver disponivel, o app orienta usar o menu de tres pontos > Instalar app ou Adicionar a tela inicial.
-- Versionamento e cache atualizados para local-1.9.0, evitando levar arquivos antigos para outra maquina.
+Novidades desta versao:
+- Filtro de competencias sem receita na aba Receitas.
+- Conferencia por imovel e periodo, respeitando vigencia e carencia contratual.
+- Botao Lancar receita com preenchimento automatico da pendencia.
+- Contador de pendencias no menu Receitas e no Painel.
+- Correcao do rotulo Nome do locatario.
+- Nova secao institucional de Sobre, Suporte, Privacidade e LGPD.
+- Orientacoes sobre dados tratados, armazenamento, seguranca e direitos dos titulares.
+- Cache e arquivos de distribuicao sincronizados com local-1.9.22.
 
 Como atualizar outra maquina:
-1. Leve o arquivo rio-dos-passos-atualizacao-local-1.9.0.zip ou rio-dos-passos-atualizacao.zip.
-2. Na outra maquina, feche o app/navegador.
+1. Leve o arquivo rio-dos-passos-atualizacao-local-1.9.22.zip ou rio-dos-passos-atualizacao.zip.
+2. Na outra maquina, feche o app e o navegador.
 3. Extraia o ZIP em uma pasta temporaria.
-4. Copie os arquivos extraidos para a pasta onde o app antigo esta instalado/publicado.
+4. Copie os arquivos extraidos para a pasta onde o app antigo esta instalado ou publicado.
 5. Substitua os arquivos existentes quando o Windows perguntar.
-6. Abra o app novamente e confirme que a versao exibida e local-1.9.0.
+6. Abra o app novamente e confirme que a versao exibida e local-1.9.22.
 
 Observacao:
-Se o celular ainda mostrar uma versao antiga, feche o app completamente e abra novamente. O service worker desta versao usa cache local-1.9.0.
-Gerado em: 2026-06-28T12:04:26-03:00
-
+Se o celular ainda mostrar uma versao antiga, feche o app completamente e abra novamente. O service worker da versao local-1.9.22 elimina os caches anteriores.
+Gerado em: 2026-07-10

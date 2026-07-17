@@ -162,6 +162,12 @@ if (-not $SkipZip) {
   $installersSource = Join-Path $root "installers"
   if (Test-Path -LiteralPath $installersSource) {
     Copy-Item -LiteralPath $installersSource -Destination (Join-Path $installerDir "installers") -Recurse -Force
+    $generatedInstallerScript = Join-Path $installerDir "installers\instalar-atalho-windows.ps1"
+    if (Test-Path -LiteralPath $generatedInstallerScript) {
+      $installerText = Get-Content -LiteralPath $generatedInstallerScript -Raw -Encoding UTF8
+      $installerText = $installerText -replace 'local-\d+\.\d+\.\d+', $Version
+      Set-Content -LiteralPath $generatedInstallerScript -Value $installerText -Encoding UTF8
+    }
   }
 
   $readmePath = Join-Path $installerDir "LEIA-ME-PRIMEIRO.txt"

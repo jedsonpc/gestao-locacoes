@@ -1,3 +1,4 @@
-﻿@echo off
+@echo off
 setlocal
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0installers\abrir-rio-dos-passos-navegador.ps1"
+cd /d "%~dp0"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0iniciar-rio-dos-passos.ps1"

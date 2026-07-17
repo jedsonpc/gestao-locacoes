@@ -31,6 +31,10 @@ body:not(.locked) .login-screen {
   display: none;
 }
 
+.mobile-shell-toggle {
+  display: none;
+}
+
 .login-screen {
   align-items: center;
   background: linear-gradient(135deg, #fff 0%, #f6eeee 100%);
@@ -257,6 +261,32 @@ textarea {
   min-height: 32px;
   padding: 0 10px;
   font-size: 13px;
+}
+
+.nav-button.has-badge {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.nav-button.has-badge span {
+  min-width: 0;
+}
+
+.nav-badge {
+  background: var(--accent);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  min-width: 22px;
+  padding: 4px 7px;
+  text-align: center;
+}
+
+.table-date-input {
+  min-height: 32px;
+  min-width: 138px;
+  padding: 0 8px;
 }
 
 .view {
@@ -657,6 +687,171 @@ textarea {
   overflow-x: auto;
 }
 
+.missing-payments-metric {
+  border-left: 4px solid var(--accent);
+}
+
+.missing-payments-metric .small-button {
+  margin-top: 12px;
+}
+
+.missing-payments-panel {
+  border-left: 4px solid var(--accent);
+}
+
+.missing-payments-panel .panel-header p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 5px 0 0;
+}
+
+.missing-payments-table {
+  min-width: 820px;
+}
+
+.filter-message {
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 700;
+  margin: 10px 0 0;
+}
+
+.filter-message:empty {
+  display: none;
+}
+
+.institutional-view {
+  gap: 18px;
+}
+
+.institutional-hero {
+  align-items: center;
+  background: linear-gradient(135deg, #fff 0%, #f8eeee 100%);
+  border-left: 4px solid var(--primary);
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+}
+
+.institutional-hero h3,
+.institutional-card h3,
+.institutional-card h4,
+.institutional-footer p {
+  margin-top: 0;
+}
+
+.institutional-hero p:not(.eyebrow) {
+  color: var(--muted);
+  line-height: 1.55;
+  margin-bottom: 0;
+  max-width: 760px;
+}
+
+.institutional-version {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  flex: 0 0 auto;
+  gap: 4px;
+  min-width: 190px;
+  padding: 14px;
+}
+
+.institutional-version span,
+.institutional-version small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.institutional-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.institutional-card {
+  min-width: 0;
+  position: relative;
+}
+
+.institutional-card p,
+.institutional-card li,
+.institutional-footer p {
+  line-height: 1.6;
+}
+
+.institutional-card h4 {
+  font-size: 14px;
+  margin-bottom: 8px;
+  margin-top: 18px;
+}
+
+.institutional-card ul,
+.institutional-steps {
+  padding-left: 22px;
+}
+
+.institutional-number {
+  color: var(--accent);
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+
+.institutional-details {
+  display: grid;
+  gap: 0;
+  margin: 18px 0;
+}
+
+.institutional-details div {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(0, 1.2fr);
+  padding: 10px 0;
+}
+
+.institutional-details dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.institutional-details dd {
+  margin: 0;
+}
+
+.institutional-note {
+  background: var(--surface-muted);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 11px 12px;
+}
+
+.institutional-contact-link {
+  align-items: center;
+  display: inline-flex;
+  margin-bottom: 8px;
+  text-decoration: none;
+}
+
+.institutional-footer {
+  border-top: 3px solid var(--primary);
+}
+
+.institutional-footer p {
+  color: var(--muted);
+  margin-bottom: 0;
+  margin-top: 6px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -831,6 +1026,81 @@ td {
   min-width: 220px;
 }
 
+.checkbox-filter {
+  min-width: 150px;
+}
+
+.checkbox-filter span {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 11px;
+  width: 100%;
+}
+
+.checkbox-filter input {
+  height: 16px;
+  width: 16px;
+}
+
+
+.export-selection {
+  display: grid;
+  gap: 12px;
+}
+
+.export-selection-header {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.export-selection-header h3 {
+  margin: 0 0 4px;
+}
+
+.export-selection-header p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.export-select-all {
+  min-width: 190px;
+}
+
+.export-selection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+}
+
+.export-selection-grid label {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 10px;
+}
+
+.export-selection-grid input {
+  height: 16px;
+  width: 16px;
+}
+.export-selection-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
 .empty-state {
   padding: 16px;
   color: var(--muted);
@@ -892,35 +1162,59 @@ td {
   min-width: 0;
 }
 
+.financial-dashboard-panel .table-wrap {
+  overflow-x: visible;
+}
+
 .financial-dashboard-table {
-  min-width: 980px;
+  min-width: 0;
+  table-layout: fixed;
+  width: 100%;
 }
 
 .access-table {
   min-width: 520px;
 }
 
+.financial-dashboard-table th,
+.financial-dashboard-table td {
+  font-size: 12px;
+  padding: 10px 8px;
+  white-space: normal;
+}
+
+.financial-dashboard-table th:first-child {
+  width: 24%;
+}
+
 .financial-dashboard-table td:first-child strong {
   display: block;
   margin-bottom: 4px;
+  overflow-wrap: anywhere;
 }
 
 .period-values {
   display: grid;
-  gap: 7px;
-  min-width: 150px;
+  gap: 6px;
+  min-width: 0;
 }
 
 .period-value {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: 6px;
   align-items: baseline;
 }
 
 .period-value small {
   color: var(--muted);
   font-size: 12px;
+}
+
+.period-value strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .period-value strong {
@@ -960,7 +1254,37 @@ td {
 }
 
 .erp-overview-grid {
-  grid-template-columns: minmax(280px, 0.8fr) minmax(360px, 1.2fr);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.erp-cashflow-panel {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.erp-cashflow-panel .panel-header {
+  align-items: center;
+}
+
+.erp-cashflow-table th {
+  font-size: 12px;
+}
+
+.erp-cashflow-table td {
+  font-size: 15px;
+  padding: 14px 12px;
+}
+
+.erp-cashflow-table td:first-child {
+  font-weight: 700;
+}
+
+.erp-cashflow-panel .table-wrap,
+.erp-receivables-panel,
+.profitability-panel,
+.summary-property-panel {
+  overflow-x: visible;
 }
 
 .erp-secondary-grid {
@@ -1012,48 +1336,114 @@ td {
   font-variant-numeric: tabular-nums;
 }
 
+.report-group-row {
+  background: #eef6f3;
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.report-subtotal-row,
+.report-total-row {
+  background: var(--surface-muted);
+  font-weight: 700;
+}
+
+.report-total-row,
+.report-total-cell {
+  color: var(--primary-dark);
+}
+
+.report-total-cell {
+  font-weight: 800;
+  text-align: right;
+}
+
 .erp-receivables-table {
-  min-width: 900px;
+  min-width: 0;
+  width: 100%;
 }
 
 .erp-receivables-table th:nth-child(1) {
-  width: 112px;
+  width: 9%;
+}
+
+.erp-receivables-table th:nth-child(2),
+.erp-receivables-table th:nth-child(3) {
+  width: 17%;
 }
 
 .erp-receivables-table th:nth-child(4),
 .erp-receivables-table th:nth-child(5),
 .erp-receivables-table th:nth-child(6) {
-  width: 105px;
+  width: 9%;
 }
 
 .erp-receivables-table th:nth-child(7) {
-  width: 96px;
+  width: 10%;
+}
+
+.erp-receivables-table th:nth-child(8) {
+  width: 20%;
 }
 
 .erp-profitability-table {
-  min-width: 980px;
+  min-width: 0;
+  width: 100%;
 }
 
 .erp-profitability-table th:nth-child(1) {
-  width: 28%;
+  width: 25%;
 }
 
 .erp-profitability-table th:nth-child(2),
 .erp-profitability-table th:nth-child(3),
 .erp-profitability-table th:nth-child(4) {
-  width: 104px;
+  width: 11%;
 }
 
 .erp-profitability-table th:nth-child(5) {
-  width: 18%;
+  width: 17%;
 }
 
 .erp-profitability-table th:nth-child(6) {
-  width: 110px;
+  width: 13%;
 }
 
 .erp-profitability-table th:nth-child(7) {
-  width: 144px;
+  width: 12%;
+}
+
+.erp-cashflow-table,
+.summary-property-table {
+  min-width: 0;
+  width: 100%;
+}
+
+.erp-cashflow-table th,
+.erp-cashflow-table td,
+.summary-property-table th,
+.summary-property-table td,
+.erp-receivables-table th,
+.erp-receivables-table td,
+.erp-profitability-table th,
+.erp-profitability-table td {
+  white-space: normal;
+}
+
+.erp-cashflow-table th,
+.erp-cashflow-table td,
+.summary-property-table th,
+.summary-property-table td {
+  padding: 10px 8px;
+}
+
+.summary-property-table th:nth-child(1) {
+  width: 28%;
+}
+
+.summary-property-table th:nth-child(n + 2) {
+  width: 14.4%;
 }
 
 .expense-category-panel,
@@ -1063,12 +1453,18 @@ td {
 
 .erp-profitability-table th,
 .erp-profitability-table td {
-  font-size: 12px;
-  padding: 10px 8px;
+  font-size: 11px;
+  padding: 9px 7px;
 }
 
 .erp-profitability-table th {
+  font-size: 10px;
+}
+
+.erp-receivables-table th,
+.erp-receivables-table td {
   font-size: 11px;
+  padding: 9px 7px;
 }
 
 .property-profitability-title {
@@ -1091,6 +1487,139 @@ td {
   font-size: 11px;
   line-height: 1.25;
   margin-top: 3px;
+}
+
+.charge-checklist-table {
+  min-width: 0;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.charge-checklist-table th,
+.charge-checklist-table td {
+  font-size: 12px;
+  padding: 10px 8px;
+  white-space: normal;
+}
+
+.charge-checklist-table th {
+  font-size: 10px;
+  letter-spacing: 0;
+  padding: 9px 6px;
+  white-space: nowrap;
+}
+
+.charge-checklist-table th:first-child,
+.charge-checklist-table td:first-child {
+  text-align: center;
+  width: 44px;
+}
+
+.charge-checklist-table th:nth-child(2) {
+  width: 17%;
+}
+
+.charge-checklist-table th:nth-child(3) {
+  width: 21%;
+}
+
+.charge-checklist-table th:nth-child(4),
+.charge-checklist-table th:nth-child(5) {
+  width: 12%;
+}
+
+.charge-checklist-table th:nth-child(6),
+.charge-checklist-table th:nth-child(7) {
+  width: 11%;
+}
+
+.charge-checklist-table th:nth-child(8) {
+  width: 14%;
+}
+
+.charge-paid-checkbox {
+  height: 15px;
+  margin: 0;
+  width: 15px;
+}
+
+.charge-client-name {
+  display: block;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.charge-alert-modal {
+  align-items: center;
+  background: rgba(17, 24, 39, 0.42);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 22px;
+  position: fixed;
+  z-index: 50;
+}
+
+.charge-alert-dialog {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  display: grid;
+  gap: 14px;
+  max-height: min(680px, 92vh);
+  max-width: 980px;
+  overflow: auto;
+  padding: 20px;
+  width: min(980px, 100%);
+}
+
+.charge-alert-header {
+  align-items: start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.charge-alert-header h3 {
+  margin: 4px 0 0;
+}
+
+.charge-alert-copy {
+  color: var(--muted);
+  margin: 0;
+}
+
+.charge-alert-list {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  overflow: hidden;
+}
+
+.charge-alert-row {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1.3fr 1.4fr 1fr 0.8fr 0.7fr 0.6fr;
+  padding: 10px 12px;
+}
+
+.charge-alert-row + .charge-alert-row {
+  border-top: 1px solid var(--line);
+}
+
+.charge-alert-row strong,
+.charge-alert-row span {
+  font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.charge-alert-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .rank-badge {
@@ -1346,6 +1875,119 @@ td {
   .erp-profitability-table {
     min-width: 680px;
   }
+
+  .financial-dashboard-table,
+  .charge-checklist-table {
+    min-width: 0;
+  }
+
+  .financial-dashboard-table th,
+  .financial-dashboard-table td,
+  .charge-checklist-table th,
+  .charge-checklist-table td {
+    font-size: 10px;
+    padding: 8px 5px;
+  }
+
+  .charge-alert-row {
+    grid-template-columns: 1fr;
+  }
+
+  .institutional-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .institutional-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .institutional-version {
+    min-width: 0;
+  }
+
+  .institutional-details div {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .charge-alert-actions {
+    flex-direction: column-reverse;
+  }
+}
+
+@media (max-width: 680px), (min-width: 681px) and (max-width: 1100px) and (max-height: 600px) {
+  body.mobile-layout-enabled .mobile-shell-toggle {
+    position: fixed;
+    top: max(9px, env(safe-area-inset-top));
+    right: max(10px, env(safe-area-inset-right));
+    z-index: 30;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.36);
+    border-radius: 999px;
+    background: rgba(62, 16, 19, 0.95);
+    color: #ffffff;
+    box-shadow: 0 8px 24px rgba(24, 10, 12, 0.28);
+    backdrop-filter: blur(10px);
+    font-size: 12px;
+  }
+
+  body.mobile-layout-enabled .mobile-shell-toggle span {
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  body.mobile-shell-collapsed .sidebar,
+  body.mobile-shell-collapsed .topbar {
+    display: none !important;
+  }
+
+  body.mobile-shell-collapsed .app-shell {
+    display: block;
+    min-height: 100dvh;
+  }
+
+  body.mobile-shell-collapsed .content {
+    width: 100%;
+    min-height: 100dvh;
+    padding: calc(60px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 28px max(16px, env(safe-area-inset-left));
+  }
+
+  body.mobile-layout-enabled:not(.mobile-shell-collapsed) .sidebar {
+    padding-top: calc(62px + env(safe-area-inset-top));
+  }
+
+  body.mobile-layout-enabled .topbar-actions {
+    width: 100%;
+  }
+
+  body.mobile-layout-enabled .topbar-actions > * {
+    max-width: 100%;
+  }
+
+  body.mobile-layout-enabled .panel-header {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  body.mobile-layout-enabled .table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 640px) {
+  body.mobile-layout-enabled:not(.mobile-shell-collapsed) .topbar-actions > button,
+  body.mobile-layout-enabled:not(.mobile-shell-collapsed) .topbar-actions > .sync-status {
+    justify-content: center;
+    width: 100%;
+  }
 }
 
 @media print {
@@ -1355,6 +1997,7 @@ td {
 
   .sidebar,
   .topbar,
+  .mobile-shell-toggle,
   .filters,
   .report-mode,
   .report-actions,
@@ -1513,5 +2156,100 @@ td {
   }
 }
 
+
+
+
+.password-field {
+  display: block;
+  position: relative;
+  width: 100%;
+}
+
+.access-management-panel {
+  align-items: end;
+}
+
+.access-users-panel .panel-header p {
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+
+#users .access-users-panel {
+  overflow: visible;
+}
+
+#users .access-users-panel table {
+  min-width: 0;
+  table-layout: fixed;
+  width: 100%;
+}
+
+#users .access-users-panel th,
+#users .access-users-panel td {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+#users .access-users-panel th:nth-child(1) { width: 20%; }
+#users .access-users-panel th:nth-child(2) { width: 28%; }
+#users .access-users-panel th:nth-child(3) { width: 19%; }
+#users .access-users-panel th:nth-child(4) { width: 13%; }
+#users .access-users-panel th:nth-child(5) { width: 20%; }
+
+#users .access-users-panel .compact-select {
+  min-width: 0;
+  width: 100%;
+}
+
+.compact-select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 135px;
+  padding: 8px 10px;
+}
+
+.status-badge {
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 5px 9px;
+}
+
+.status-active { background: #e7f4ea; color: #21673a; }
+.status-inactive { background: #f8e7e7; color: #8a2d32; }
+
+.password-field input {
+  padding-right: 86px;
+  width: 100%;
+}
+
+.password-toggle {
+  align-items: center;
+  background: #f7eeee;
+  border: 1px solid #d8c4c6;
+  border-radius: 6px;
+  color: var(--primary);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  height: 32px;
+  justify-content: center;
+  line-height: 1;
+  min-width: 68px;
+  padding: 0 10px;
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+  background: #ffffff;
+  border-color: var(--primary);
+  outline: none;
+}
 
 

@@ -24,7 +24,7 @@ $ErrorActionPreference = "SilentlyContinue"
 
 $AppDir = Join-Path $PSScriptRoot "app"
 $IndexFile = Join-Path $AppDir "index.html"
-$Url = "http://127.0.0.1:4173/?v=1.7.1"
+$Url = "https://gestao-locacoes-opal.vercel.app/?v=local-1.9.31"
 $PidFile = Join-Path $PSScriptRoot "rio-dos-passos-server.pid"
 
 function Open-Browser($target) {
@@ -32,12 +32,12 @@ function Open-Browser($target) {
   $chrome = Get-Command "chrome.exe" -ErrorAction SilentlyContinue
 
   if ($edge) {
-    Start-Process -FilePath $edge.Source -ArgumentList "--app=$target"
+    Start-Process -FilePath $edge.Source -ArgumentList "--start-maximized","--app=$target"
     return
   }
 
   if ($chrome) {
-    Start-Process -FilePath $chrome.Source -ArgumentList "--app=$target"
+    Start-Process -FilePath $chrome.Source -ArgumentList "--start-maximized","--app=$target"
     return
   }
 
@@ -103,6 +103,7 @@ foreach ($shortcutPath in @($desktopShortcut, $startMenuShortcut)) {
   $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$startScript`""
   $shortcut.WorkingDirectory = $installRoot
   $shortcut.Description = "Abrir Rio dos Passos"
+  $shortcut.WindowStyle = 7
   if (Test-Path $iconFile) {
     $shortcut.IconLocation = $iconFile
   }
