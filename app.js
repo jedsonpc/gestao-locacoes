@@ -14,7 +14,7 @@ const backupDirectoryHandleKey = "app-backup-folder";
 const backupMaxItems = 5;
 const preferredBackupFolderLabel = "D:\\App\\backups";
 const companyName = "Imobiliaria Rio dos Passos Ltda";
-const appVersion = "local-1.9.36";
+const appVersion = "local-1.9.37";
 let deferredMobileInstallPrompt = null;
 
 window.addEventListener("beforeinstallprompt", (event) => {
@@ -27,7 +27,7 @@ window.addEventListener("appinstalled", () => {
   deferredMobileInstallPrompt = null;
   updateMobileInstallCard();
 });
-const appDeployedAt = "2026-07-17T17:46:33-03:00";
+const appDeployedAt = "2026-07-17T17:49:53-03:00";
 const updatePackageFileName = "rio-dos-passos-atualizacao.zip";
 const updatePackageManifestFileName = "update-package.json";
 const appStorage = createSafeStorage("app");
@@ -6080,6 +6080,7 @@ function performFinancialErpCsv() {
     "text/csv;charset=utf-8",
   );
 }
+
 
 
 

@@ -85,10 +85,8 @@ if (Test-LocalServer) {
 }
 '@ | Set-Content -LiteralPath $startScript -Encoding UTF8
 
-$desktop = [Environment]::GetFolderPath("Desktop")
 $programs = [Environment]::GetFolderPath("Programs")
 $shortcutName = "Rio dos Passos.lnk"
-$desktopShortcut = Join-Path $desktop $shortcutName
 $startMenuDir = Join-Path $programs "Rio dos Passos"
 $startMenuShortcut = Join-Path $startMenuDir $shortcutName
 
@@ -97,7 +95,7 @@ New-Item -ItemType Directory -Force -Path $startMenuDir | Out-Null
 $shell = New-Object -ComObject WScript.Shell
 $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 
-foreach ($shortcutPath in @($desktopShortcut, $startMenuShortcut)) {
+foreach ($shortcutPath in @($startMenuShortcut)) {
   $shortcut = $shell.CreateShortcut($shortcutPath)
   $shortcut.TargetPath = $powershell
   $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$startScript`""
@@ -111,6 +109,7 @@ foreach ($shortcutPath in @($desktopShortcut, $startMenuShortcut)) {
 }
 
 Write-Host ""
-Write-Host "Instalacao concluida."
-Write-Host "Atalho criado na Area de Trabalho e no Menu Iniciar: Rio dos Passos"
+Write-Host "Instalacao/atualizacao concluida."
+Write-Host "O atalho personalizado da Area de Trabalho foi preservado."
+Write-Host "Atalho atualizado no Menu Iniciar: Rio dos Passos"
 Write-Host "Arquivos instalados em: $installRoot"
