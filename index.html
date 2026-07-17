@@ -14,7 +14,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=local-1.9.37" />
+    <link rel="stylesheet" href="styles.css?v=local-1.9.38" />
   </head>
   <body class="locked">
     <section class="login-screen" id="login-screen" aria-label="Acesso ao sistema">
@@ -34,6 +34,15 @@
           </span>
         </label>
         <button class="primary-button" type="submit">Entrar</button>
+        <div class="login-progress hidden" id="login-progress" aria-live="polite">
+          <div class="login-progress-header">
+            <span id="login-progress-text">Preparando validacao...</span>
+            <strong id="login-progress-percent">0%</strong>
+          </div>
+          <div class="login-progress-track" role="progressbar" aria-label="Progresso da validacao do login" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <span id="login-progress-bar"></span>
+          </div>
+        </div>
         <span class="form-message" id="login-message"></span>
       </form>
     </section>
@@ -81,7 +90,7 @@
             <span class="sync-status" id="current-user-badge">Usuario nao identificado</span>
             <span class="sync-status" id="sync-status">Offline local</span>
             <span class="sync-status app-version-status">
-              <strong id="metric-app-version">local-1.9.37</strong>
+              <strong id="metric-app-version">local-1.9.38</strong>
               <small id="metric-app-updated">13/07/2026 18:20</small>
             </span>
             <button class="ghost-button app-install-action hidden" id="install-app-top-button" type="button">Gerar QR Code para acesso ao sistema</button>
@@ -1528,9 +1537,9 @@
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     <script src="supabase-config.js" defer></script>
-    <script src="supabase-sync.js?v=local-1.9.37" defer></script>
-    <script src="update-checker.js?v=local-1.9.37" defer></script>
-    <script src="app.js?v=local-1.9.37" defer></script>
+    <script src="supabase-sync.js?v=local-1.9.38" defer></script>
+    <script src="update-checker.js?v=local-1.9.38" defer></script>
+    <script src="app.js?v=local-1.9.38" defer></script>
     <script>
       document.addEventListener("click", (event) => {
         const button = event.target.closest("[data-toggle-password]");
@@ -1545,6 +1554,7 @@
       });
     </script>  </body>
 </html>
+
 
 
 

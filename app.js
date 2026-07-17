@@ -14,7 +14,7 @@ const backupDirectoryHandleKey = "app-backup-folder";
 const backupMaxItems = 5;
 const preferredBackupFolderLabel = "D:\\App\\backups";
 const companyName = "Imobiliaria Rio dos Passos Ltda";
-const appVersion = "local-1.9.37";
+const appVersion = "local-1.9.38";
 let deferredMobileInstallPrompt = null;
 
 window.addEventListener("beforeinstallprompt", (event) => {
@@ -27,7 +27,7 @@ window.addEventListener("appinstalled", () => {
   deferredMobileInstallPrompt = null;
   updateMobileInstallCard();
 });
-const appDeployedAt = "2026-07-17T17:49:53-03:00";
+const appDeployedAt = "2026-07-17T17:59:24-03:00";
 const updatePackageFileName = "rio-dos-passos-atualizacao.zip";
 const updatePackageManifestFileName = "update-package.json";
 const appStorage = createSafeStorage("app");
@@ -1158,15 +1158,36 @@ function openPropertyDocumentFromForm() {
   }
 }
 
+function setLoginProgress(percent, message, visible = true) {
+  const container = document.getElementById("login-progress");
+  const bar = document.getElementById("login-progress-bar");
+  const track = container?.querySelector('[role="progressbar"]');
+  const normalizedPercent = Math.max(0, Math.min(100, Number(percent) || 0));
+  container?.classList.toggle("hidden", !visible);
+  if (bar) bar.style.width = `${normalizedPercent}%`;
+  setText("login-progress-text", message || "Validando acesso...");
+  setText("login-progress-percent", `${normalizedPercent}%`);
+  track?.setAttribute("aria-valuenow", String(normalizedPercent));
+}
+
 async function login(form) {
   const data = Object.fromEntries(new FormData(form).entries());
+  const submitButton = form.querySelector('button[type="submit"]');
+  setText("login-message", "");
+  setLoginProgress(15, "Validando os dados informados...");
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = "Validando...";
+  }
   try {
     const email = String(data.username || "").trim();
     if (!window.SupabaseSync && canUseCachedOfflineUser()) {
+      setLoginProgress(55, "Verificando o acesso offline...");
       const cachedUser = getCachedOfflineUser();
       if (email && cachedUser.email && email.toLowerCase() !== cachedUser.email.toLowerCase()) {
         throw new Error("Este dispositivo esta offline e so pode entrar com o ultimo usuario validado online.");
       }
+      setLoginProgress(100, "Acesso confirmado. Abrindo o sistema...");
       activateOfflineSession(cachedUser);
       setText("login-message", "Entrada offline liberada. As alteracoes serao sincronizadas quando a internet voltar.");
       renderAll();
@@ -1175,10 +1196,13 @@ async function login(form) {
     if (!window.SupabaseSync) {
       throw new Error("Conexao com Supabase nao carregada. Verifique a internet e recarregue.");
     }
+    setLoginProgress(45, "Conectando ao servico de autenticacao...");
     const signedUser = await window.SupabaseSync.signIn(email, data.password || "");
+    setLoginProgress(75, "Verificando usuario e permissoes...");
     const user = signedUser || await resolveSupabaseUser(3, 200);
     if (!user) throw new Error("Sessao Supabase nao retornada.");
     cacheOfflineUser(user);
+    setLoginProgress(100, "Acesso confirmado. Abrindo o sistema...");
     activateSupabaseSession(user);
     addAuditLog("login_success", "auth", user.id, null, { username: user.email || email, role: resolveUserRole(user) }, false);
     form.reset();
@@ -1187,6 +1211,11 @@ async function login(form) {
   } catch (error) {
     addAuditLog("login_failed", "auth", "", null, { username: String(data.username || "").trim() }, false);
     setText("login-message", `Falha no login Supabase: ${error.message || error}`);
+    setLoginProgress(0, "Nao foi possivel validar o acesso.");
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = "Entrar";
+    }
   }
 }
 
@@ -6080,6 +6109,7 @@ function performFinancialErpCsv() {
     "text/csv;charset=utf-8",
   );
 }
+
 
 
 
