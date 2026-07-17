@@ -14,7 +14,7 @@ const backupDirectoryHandleKey = "app-backup-folder";
 const backupMaxItems = 5;
 const preferredBackupFolderLabel = "D:\\App\\backups";
 const companyName = "Imobiliaria Rio dos Passos Ltda";
-const appVersion = "local-1.9.34";
+const appVersion = "local-1.9.35";
 let deferredMobileInstallPrompt = null;
 
 window.addEventListener("beforeinstallprompt", (event) => {
@@ -27,7 +27,7 @@ window.addEventListener("appinstalled", () => {
   deferredMobileInstallPrompt = null;
   updateMobileInstallCard();
 });
-const appDeployedAt = "2026-07-17T16:24:50-03:00";
+const appDeployedAt = "2026-07-17T17:38:16-03:00";
 const updatePackageFileName = "rio-dos-passos-atualizacao.zip";
 const updatePackageManifestFileName = "update-package.json";
 const appStorage = createSafeStorage("app");
@@ -3600,10 +3600,12 @@ function getFinancialLaunchFilters(type) {
 
 function getFilteredFinancialLaunches(rows, competenceGetter, dateKey, filters) {
   const hasFilters = hasFinancialLaunchFilters(filters);
+  const startCompetence = parseCompetence(filters.startDate);
+  const endCompetence = parseCompetence(filters.endDate);
   const filteredRows = rows
     .filter((row) => filters.propertyId === "all" || row.propertyId === filters.propertyId)
-    .filter((row) => !filters.startDate || competenceGetter(row) >= parseDate(filters.startDate))
-    .filter((row) => !filters.endDate || competenceGetter(row) <= parseDate(filters.endDate))
+    .filter((row) => !startCompetence || competenceGetter(row) >= startCompetence)
+    .filter((row) => !endCompetence || competenceGetter(row) <= endCompetence)
     .sort((left, right) => {
       const dateComparison = String(right.competence || right[dateKey] || "").localeCompare(String(left.competence || left[dateKey] || ""));
       if (dateComparison) return dateComparison;
@@ -3623,8 +3625,8 @@ function getFinancialLaunchCaption(type, visibleCount) {
   }
   const parts = [];
   if (filters.propertyId !== "all") parts.push(findProperty(filters.propertyId)?.description || "imovel selecionado");
-  if (filters.startDate) parts.push(`desde ${formatDate(filters.startDate)}`);
-  if (filters.endDate) parts.push(`ate ${formatDate(filters.endDate)}`);
+  if (filters.startDate) parts.push(`desde ${formatCompetence(filters.startDate)}`);
+  if (filters.endDate) parts.push(`ate ${formatCompetence(filters.endDate)}`);
   return `${visibleCount} lancamento(s) filtrado(s)${parts.length ? ` - ${parts.join(" | ")}` : ""}`;
 }
 
@@ -6067,6 +6069,7 @@ function performFinancialErpCsv() {
     "text/csv;charset=utf-8",
   );
 }
+
 
 
 
