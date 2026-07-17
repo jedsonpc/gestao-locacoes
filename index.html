@@ -14,7 +14,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=local-1.9.32" />
+    <link rel="stylesheet" href="styles.css?v=local-1.9.33" />
   </head>
   <body class="locked">
     <section class="login-screen" id="login-screen" aria-label="Acesso ao sistema">
@@ -81,7 +81,7 @@
             <span class="sync-status" id="current-user-badge">Usuario nao identificado</span>
             <span class="sync-status" id="sync-status">Offline local</span>
             <span class="sync-status app-version-status">
-              <strong id="metric-app-version">local-1.9.32</strong>
+              <strong id="metric-app-version">local-1.9.33</strong>
               <small id="metric-app-updated">13/07/2026 18:20</small>
             </span>
             <button class="ghost-button app-install-action hidden" id="install-app-top-button" type="button">Gerar QR Code para acesso ao sistema</button>
@@ -90,6 +90,15 @@
         </section>
 
         <section class="view active" id="dashboard">
+          <section class="mobile-install-card hidden" id="mobile-install-card" aria-labelledby="mobile-install-title">
+            <div class="mobile-install-icon" aria-hidden="true">⌂</div>
+            <div class="mobile-install-copy">
+              <span>ACESSO RÁPIDO</span>
+              <h3 id="mobile-install-title">Adicionar à tela inicial</h3>
+              <p id="mobile-install-help">Crie um atalho para abrir o sistema como um aplicativo no celular.</p>
+            </div>
+            <button class="primary-button" id="mobile-install-button" type="button">Criar atalho</button>
+          </section>
           <div class="metrics-grid">
             <article class="metric">
               <span>Imoveis cadastrados</span>
@@ -1502,9 +1511,9 @@
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     <script src="supabase-config.js" defer></script>
-    <script src="supabase-sync.js?v=local-1.9.32" defer></script>
-    <script src="update-checker.js?v=local-1.9.32" defer></script>
-    <script src="app.js?v=local-1.9.32" defer></script>
+    <script src="supabase-sync.js?v=local-1.9.33" defer></script>
+    <script src="update-checker.js?v=local-1.9.33" defer></script>
+    <script src="app.js?v=local-1.9.33" defer></script>
     <script>
       document.addEventListener("click", (event) => {
         const button = event.target.closest("[data-toggle-password]");
@@ -1519,6 +1528,7 @@
       });
     </script>  </body>
 </html>
+
 
 
 

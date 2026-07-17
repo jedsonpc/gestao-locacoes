@@ -14,8 +14,20 @@ const backupDirectoryHandleKey = "app-backup-folder";
 const backupMaxItems = 5;
 const preferredBackupFolderLabel = "D:\\App\\backups";
 const companyName = "Imobiliaria Rio dos Passos Ltda";
-const appVersion = "local-1.9.32";
-const appDeployedAt = "2026-07-17T12:29:39-03:00";
+const appVersion = "local-1.9.33";
+let deferredMobileInstallPrompt = null;
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredMobileInstallPrompt = event;
+  updateMobileInstallCard();
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredMobileInstallPrompt = null;
+  updateMobileInstallCard();
+});
+const appDeployedAt = "2026-07-17T16:15:40-03:00";
 const updatePackageFileName = "rio-dos-passos-atualizacao.zip";
 const updatePackageManifestFileName = "update-package.json";
 const appStorage = createSafeStorage("app");
@@ -1044,6 +1056,8 @@ function bindForms() {
 }
 
 function bindUtilities() {
+  document.getElementById("mobile-install-button")?.addEventListener("click", handleMobileInstall);
+  updateMobileInstallCard();
   document.getElementById("seed-data")?.addEventListener("click", () => {
     createLocalBackup("before_restore", state, { force: true });
     state = createSampleData();
@@ -1187,6 +1201,58 @@ async function logout() {
     appSessionStorage.removeItem(sessionKey);
     appSessionStorage.removeItem(sessionUserKey);
     document.body.classList.add("locked");
+  }
+}
+
+function isInstalledMobileApp() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
+function isIosMobileDevice() {
+  return /iPhone|iPad|iPod/i.test(window.navigator.userAgent || "");
+}
+
+function updateMobileInstallCard() {
+  const card = document.getElementById("mobile-install-card");
+  const button = document.getElementById("mobile-install-button");
+  const help = document.getElementById("mobile-install-help");
+  if (!card || !button || !help) return;
+
+  const shouldShow = isMobileShellEligible() && !isInstalledMobileApp();
+  card.classList.toggle("hidden", !shouldShow);
+  if (!shouldShow) return;
+
+  if (isIosMobileDevice()) {
+    button.textContent = "Ver como adicionar";
+    help.textContent = "No iPhone ou iPad, use Compartilhar e depois Adicionar à Tela de Início.";
+    return;
+  }
+
+  button.textContent = deferredMobileInstallPrompt ? "Instalar aplicativo" : "Criar atalho";
+  help.textContent = deferredMobileInstallPrompt
+    ? "Instale para abrir o sistema em tela própria, diretamente pelo ícone do celular."
+    : "No navegador, abra o menu e escolha Instalar app ou Adicionar à tela inicial.";
+}
+
+async function handleMobileInstall() {
+  const help = document.getElementById("mobile-install-help");
+  if (isIosMobileDevice()) {
+    if (help) help.innerHTML = "Toque em <strong>Compartilhar</strong> e selecione <strong>Adicionar à Tela de Início</strong>.";
+    return;
+  }
+
+  if (!deferredMobileInstallPrompt) {
+    if (help) help.innerHTML = "Abra o menu do navegador e escolha <strong>Instalar app</strong> ou <strong>Adicionar à tela inicial</strong>.";
+    return;
+  }
+
+  deferredMobileInstallPrompt.prompt();
+  const choice = await deferredMobileInstallPrompt.userChoice;
+  deferredMobileInstallPrompt = null;
+  if (choice?.outcome === "accepted") {
+    document.getElementById("mobile-install-card")?.classList.add("hidden");
+  } else {
+    updateMobileInstallCard();
   }
 }
 
@@ -5962,6 +6028,7 @@ function performFinancialErpCsv() {
     "text/csv;charset=utf-8",
   );
 }
+
 
 
 
