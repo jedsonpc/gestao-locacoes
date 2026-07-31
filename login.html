@@ -18,7 +18,6 @@
   .login-card .password-toggle { position:absolute; top:50%; right:.4rem; transform:translateY(-50%); width:auto; margin:0; padding:.35rem .55rem; background:#eef3f2; color:#1a2a4a; border:1px solid #d0d5dd; border-radius:5px; font-size:.78rem; line-height:1; }
   .login-card button:disabled { opacity:.6; cursor:wait; }
   .login-card .err { margin-top:1rem; padding:.6rem; background:#fee; color:#c00; border-radius:6px; font-size:.85rem; display:none; }
-  #activation-form { display:none; }
 </style>
 </head>
 <body>
@@ -33,24 +32,10 @@
     <div class="err" id="err"></div>
   </form>
 
-  <form class="login-card" id="activation-form">
-    <h1>Ativar seu acesso</h1>
-    <p class="sub">Defina uma senha para entrar na Imobiliária Rio dos Passos.</p>
-    <label for="new-password">Nova senha</label>
-    <span class="password-field"><input type="password" id="new-password" required minlength="8" autocomplete="new-password"><button class="password-toggle" type="button" data-toggle-password="new-password" aria-label="Exibir senha" aria-pressed="false">Exibir</button></span>
-    <label for="confirm-password">Confirmar nova senha</label>
-    <span class="password-field"><input type="password" id="confirm-password" required minlength="8" autocomplete="new-password"><button class="password-toggle" type="button" data-toggle-password="confirm-password" aria-label="Exibir senha" aria-pressed="false">Exibir</button></span>
-    <button type="submit" id="activation-btn">Ativar acesso</button>
-    <div class="err" id="activation-err"></div>
-  </form>
-
-  <script>
-    window.IMOB_AUTH_FLOW = /type=(invite|recovery)/.test(location.hash + location.search);
-    if (!window.IMOB_AUTH_FLOW) location.replace("index.html");
-  </script>
+  <script src="login-update.js?v=20260731" data-app-name="Rio dos Passos"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="supabase-config.js?v=local-1.9.31"></script>
-  <script src="supabase-sync.js?v=local-1.9.31"></script>
+  <script src="supabase-config.js"></script>
+  <script src="supabase-sync.js"></script>
   <script>
     document.addEventListener("click", (event) => {
       const button = event.target.closest("[data-toggle-password]");
@@ -67,7 +52,6 @@
     const sessionKey = "gestao-locacoes-session-v1";
     const sessionUserKey = "gestao-locacoes-session-user-v1";
     const backupKey = "gestao-locacoes-backups-v1";
-    const authFlow = Boolean(window.IMOB_AUTH_FLOW);
 
     function freeLocalStorageSpace() {
       try {
@@ -127,31 +111,9 @@
       location.replace("index.html");
     }
 
-    function enterOnline(user) {
-      sessionStorage.setItem(sessionKey, "active");
-      sessionStorage.setItem(sessionUserKey, JSON.stringify({
-        id: user.id,
-        username: user.email || "usuario@supabase",
-        role: user.appAccessProfile?.role || user.app_metadata?.role || user.user_metadata?.role || "admin",
-      }));
-      location.replace("index.html");
-    }
-
     (async () => {
       const err = document.getElementById("err");
       const btn = document.getElementById("submit-btn");
-      if (authFlow) {
-        document.getElementById("login-form").style.display = "none";
-        document.getElementById("activation-form").style.display = "block";
-        try {
-          await window.SupabaseSync?.client.auth.getSession();
-        } catch (error) {
-          const activationErr = document.getElementById("activation-err");
-          activationErr.textContent = "Não foi possível validar o convite: " + (error.message || error);
-          activationErr.style.display = "block";
-        }
-        return;
-      }
       if (!window.SupabaseSync) {
         const cachedUser = getCachedOfflineUser();
         if (!navigator.onLine && cachedUser) {
@@ -167,7 +129,7 @@
       }
       try {
         const user = await window.SupabaseSync.getCurrentUser();
-        if (user) enterOnline(user);
+        if (user) location.replace("index.html");
       } catch {
         err.textContent = "Nao foi possivel verificar uma sessao anterior. Informe email e senha para entrar novamente.";
         err.style.display = "block";
@@ -175,37 +137,6 @@
         btn.disabled = false;
       }
     })();
-
-    document.getElementById("activation-form").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const password = document.getElementById("new-password").value;
-      const confirmation = document.getElementById("confirm-password").value;
-      const btn = document.getElementById("activation-btn");
-      const err = document.getElementById("activation-err");
-      err.style.display = "none";
-      if (password !== confirmation) {
-        err.textContent = "As senhas não coincidem.";
-        err.style.display = "block";
-        return;
-      }
-      btn.disabled = true;
-      btn.textContent = "Ativando...";
-      try {
-        const { data } = await window.SupabaseSync.client.auth.getSession();
-        if (!data?.session) throw new Error("Este convite expirou ou já foi utilizado. Solicite um novo convite ao administrador.");
-        const { error } = await window.SupabaseSync.client.auth.updateUser({ password });
-        if (error) throw error;
-        const user = await window.SupabaseSync.getCurrentUser();
-        if (user) cacheOfflineUser(user);
-        history.replaceState({}, "", location.pathname);
-        location.replace("index.html");
-      } catch (error) {
-        err.textContent = "Não foi possível ativar o acesso: " + (error.message || error);
-        err.style.display = "block";
-        btn.disabled = false;
-        btn.textContent = "Ativar acesso";
-      }
-    });
 
     document.getElementById("login-form").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -231,7 +162,7 @@
         const user = signedUser || await window.SupabaseSync.getCurrentUser();
         if (!user) throw new Error("Login aceito, mas a sessao nao foi gravada no navegador. Recarregue e tente novamente.");
         cacheOfflineUser(user);
-        enterOnline(user);
+        location.replace("index.html");
       } catch (e2) {
         err.textContent = "Falha no login: " + (e2.message || e2);
         err.style.display = "block";

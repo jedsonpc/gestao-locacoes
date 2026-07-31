@@ -1,9 +1,9 @@
 ﻿// Rio dos Passos PWA - service worker
 // A linha __APP_VERSION__ eh reescrita automaticamente pelo GitHub Actions
 // no momento do deploy (vira o SHA do commit). Cada deploy = novo cache.
-const appVersion = "local-1.9.38";
+const appVersion = "local-1.9.50";
 const cachePrefix = "gestao-locacoes-";
-const cacheName = `gestao-locacoes-${appVersion}-mobile-refresh`;
+const cacheName = `gestao-locacoes-${appVersion}-login-update-prompt-20260731`;
 const staticFiles = [
   "./",
   "./index.html",
@@ -11,9 +11,11 @@ const staticFiles = [
   "./instalar-celular.html",
   "./styles.css",
   "./app.js",
+  "./offline-db.js",
   "./supabase-config.js",
   "./supabase-sync.js",
   "./update-checker.js",
+  "./login-update.js",
   "./manifest.webmanifest",
   "./icon.svg",
   "./icon-192.png",
@@ -49,7 +51,6 @@ self.addEventListener("install", (event) => {
       Promise.allSettled(staticFiles.map((f) => cache.add(f).catch(() => null))),
     ),
   );
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
@@ -117,6 +118,18 @@ self.addEventListener("fetch", (event) => {
     }),
   );
 });
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

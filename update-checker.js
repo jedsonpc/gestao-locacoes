@@ -81,6 +81,8 @@
   });
 
   function showBanner() {
+    const loginForm = document.querySelector("#login-form");
+    if (loginForm?.getClientRects().length) return;
     if (document.getElementById("update-banner")) return;
     const bar = document.createElement("div");
     bar.id = "update-banner";
@@ -126,7 +128,7 @@
 
     if (latestVersion && loadedVersion && latestVersion !== loadedVersion) {
       updateStatusText("Nova versao encontrada.");
-      if (isAutoUpdateEnabled() || options.apply) {
+      if (options.apply) {
         applyUpdate();
       } else {
         showBanner();
@@ -166,8 +168,7 @@
     registrationPromise = navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).then((registration) => {
       if (registration.waiting) {
         waitingWorker = registration.waiting;
-        if (isAutoUpdateEnabled()) applyUpdate();
-        else showBanner();
+        showBanner();
       }
 
       registration.addEventListener("updatefound", () => {
@@ -176,8 +177,7 @@
         newWorker.addEventListener("statechange", () => {
           if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
             waitingWorker = newWorker;
-            if (isAutoUpdateEnabled()) applyUpdate();
-            else showBanner();
+            showBanner();
           }
         });
       });

@@ -14,7 +14,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=local-1.9.38" />
+    <link rel="stylesheet" href="styles.css?v=local-1.9.49" />
   </head>
   <body class="locked">
     <section class="login-screen" id="login-screen" aria-label="Acesso ao sistema">
@@ -90,7 +90,7 @@
             <span class="sync-status" id="current-user-badge">Usuario nao identificado</span>
             <span class="sync-status" id="sync-status">Offline local</span>
             <span class="sync-status app-version-status">
-              <strong id="metric-app-version">local-1.9.38</strong>
+              <strong id="metric-app-version">local-1.9.49</strong>
               <small id="metric-app-updated">13/07/2026 18:20</small>
             </span>
             <button class="ghost-button app-install-action hidden" id="install-app-top-button" type="button">Gerar QR Code para acesso ao sistema</button>
@@ -370,7 +370,7 @@
               Forma de reajuste
               <select name="adjustmentMethod" required>
                 <option>IPCA</option>
-                <option>IGP-M</option>
+                <option selected>IGP-M</option>
                 <option>INPC</option>
                 <option>Percentual fixo</option>
                 <option>Negociacao entre as partes</option>
@@ -459,7 +459,6 @@
                   <th>Valor</th>
                   <th>Valor ajustado</th>
                   <th>Garantia</th>
-                  <th>Reajuste</th>
                   <th>Taxas</th>
                   <th>Contato</th>
                   <th>Acoes</th>
@@ -504,6 +503,7 @@
                 <option>Manutencao</option>
                 <option>Impostos e taxas</option>
                 <option>Condominio</option>
+                <option>Corretor</option>
                 <option>Seguro</option>
                 <option>Servicos terceiros</option>
                 <option>Outros</option>
@@ -872,27 +872,6 @@
                 </table>
               </div>
           </section>
-          <div class="table-wrap panel erp-receivables-panel">
-            <div class="panel-header">
-              <h3>Contas a receber automaticas</h3>
-              <span>Geradas pelos contratos ativos no periodo</span>
-            </div>
-            <table class="management-table erp-receivables-table">
-              <thead>
-                <tr>
-                  <th>Vencimento</th>
-                  <th>Imovel</th>
-                  <th>Cliente</th>
-                  <th>Previsto</th>
-                  <th>Recebido</th>
-                  <th>Saldo</th>
-                  <th>Status</th>
-                  <th>Observacao</th>
-                </tr>
-              </thead>
-              <tbody id="erp-receivables-body"></tbody>
-            </table>
-          </div>
           <section class="table-wrap panel expense-category-panel">
               <div class="panel-header">
                 <h3>Despesas por categoria</h3>
@@ -929,6 +908,43 @@
               <tbody id="erp-property-profitability-body"></tbody>
             </table>
           </section>
+          <section class="panel profitability-chart-panel">
+            <div class="profitability-chart-card" aria-labelledby="erp-profitability-chart-title">
+              <div class="profitability-chart-header">
+                <div>
+                  <h4 id="erp-profitability-chart-title">Analise gerencial da rentabilidade</h4>
+                  <p id="erp-profitability-chart-period">Periodo selecionado</p>
+                </div>
+                <div class="profitability-chart-legend" aria-label="Legenda do grafico">
+                  <span><i class="revenue"></i>Receita</span>
+                  <span><i class="expense"></i>Despesas</span>
+                  <span><i class="result"></i>Resultado</span>
+                </div>
+              </div>
+              <div class="profitability-chart" id="erp-profitability-chart" role="img" aria-label="Comparativo de receita, despesas e resultado por imovel"></div>
+            </div>
+          </section>
+          <div class="table-wrap panel erp-receivables-panel">
+            <div class="panel-header">
+              <h3>Contas a receber automaticas</h3>
+              <span>Geradas pelos contratos ativos no periodo</span>
+            </div>
+            <table class="management-table erp-receivables-table">
+              <thead>
+                <tr>
+                  <th>Vencimento</th>
+                  <th>Imovel</th>
+                  <th>Cliente</th>
+                  <th>Previsto</th>
+                  <th>Recebido</th>
+                  <th>Saldo</th>
+                  <th>Status</th>
+                  <th>Observacao</th>
+                </tr>
+              </thead>
+              <tbody id="erp-receivables-body"></tbody>
+            </table>
+          </div>
         </section>
 
         <section class="view management-view" id="reports">
@@ -1011,6 +1027,7 @@
                 <option>Manutencao</option>
                 <option>Impostos e taxas</option>
                 <option>Condominio</option>
+                <option>Corretor</option>
                 <option>Seguro</option>
                 <option>Servicos terceiros</option>
                 <option>Outros</option>
@@ -1536,10 +1553,12 @@
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="offline-db.js?v=local-1.9.50" defer></script>
     <script src="supabase-config.js" defer></script>
-    <script src="supabase-sync.js?v=local-1.9.38" defer></script>
-    <script src="update-checker.js?v=local-1.9.38" defer></script>
-    <script src="app.js?v=local-1.9.38" defer></script>
+    <script src="supabase-sync.js?v=local-1.9.50" defer></script>
+    <script src="login-update.js?v=20260731" data-app-name="Rio dos Passos" defer></script>
+    <script src="update-checker.js?v=local-1.9.50" defer></script>
+    <script src="app.js?v=local-1.9.50" defer></script>
     <script>
       document.addEventListener("click", (event) => {
         const button = event.target.closest("[data-toggle-password]");
@@ -1554,6 +1573,18 @@
       });
     </script>  </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
